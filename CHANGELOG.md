@@ -7,6 +7,30 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-05-21
+
+### Security
+
+- `redact()` now strips both the full `HATCHET_CLIENT_TOKEN` and its 16-char prefix from
+  external-facing strings, catching truncated log lines and partial header echoes that the
+  exact-substring match in 0.1.0 missed (`src/hatchet_mcp/config.py`).
+- `ConfigError` from `_parse_bool` runs the offending env value through `redact()` before
+  echoing — a token mis-pasted into `HATCHET_MCP_READ_ONLY` no longer surfaces in the
+  startup banner (`src/hatchet_mcp/config.py`).
+- New `muzzle_dependency_loggers()` forces `hatchet_sdk`, `aiohttp`, `httpx`, `httpcore`,
+  `grpc`, and `urllib3` loggers to `WARNING` at server boot, closing the only realistic
+  path by which a downstream `LOG_LEVEL=DEBUG` could echo `Authorization: Bearer <token>`
+  headers to stderr (`src/hatchet_mcp/server.py`).
+
+### Docs
+
+- README: add a 4-step Quick start (token → install → MCP-client wiring → first call) and
+  remove the pre-publish placeholders (`(once published)`, `Before the package is published
+  to PyPI…`) now that 0.1.0 is on PyPI.
+- Scaffold the `v0.2.0/reliability` spec (idempotent retry + 30s deadline + structured
+  stderr logs + `get_server_info` diagnostics) with its paired ADR and the first row in
+  `docs/roadmap/README.md`'s active spec index.
+
 ## [0.1.0] - 2026-05-21
 
 Initial release.
@@ -28,5 +52,6 @@ Initial release.
 - Environment-only configuration; fail-fast startup when `HATCHET_CLIENT_TOKEN` is missing.
 - PyPI publishing via GitHub Actions Trusted Publishing (OIDC).
 
-[Unreleased]: https://github.com/DanMeon/hatchet-mcp/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/DanMeon/hatchet-mcp/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/DanMeon/hatchet-mcp/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/DanMeon/hatchet-mcp/releases/tag/v0.1.0
