@@ -192,7 +192,9 @@ def _destructive(*, idempotent: bool) -> ToolAnnotations:
 # RestTransportError, 429, 5xx. Everything else surfaces on the first attempt. The retry
 # budget (~7s with jitter) sits inside the deadline so wall-clock per call is capped at 30s.
 _PER_CALL_TIMEOUT_S = 30.0
-_RETRY_BACKOFFS_S: tuple[float, ...] = (1.0, 2.0)
+# ^ 4 attempts (1 initial + 3 retries); 3 sleeps total. Spec body says "3 attempts, 1s/2s/4s",
+# which we treat as "3 retries after the first attempt" — matches ADR §1's 1s+2s+4s ≈ 7s budget.
+_RETRY_BACKOFFS_S: tuple[float, ...] = (1.0, 2.0, 4.0)
 _BACKOFF_JITTER = 0.25
 _RETRY_AFTER_CAP_S = 10.0
 
@@ -279,12 +281,35 @@ def _reliability_wrap(fn: Callable[..., Any], *, retry: bool) -> Callable[..., A
             except ApiException as exc:
                 raise _api_error(exc) from None
         except BaseException as exc:
+            # asyncio.TimeoutError carries no message; build a meaningful one so the
+            # tool.error record and the MCP JSON-RPC channel both name what timed out.
+            if isinstance(exc, asyncio.TimeoutError) and not str(exc):
+                msg = f"tool {tool_name!r} exceeded {_PER_CALL_TIMEOUT_S}s deadline"
+            else:
+                msg = f"{type(exc).__name__}: {exc}"
+            redacted_msg = redact(msg)
             emit(
                 "tool.error",
                 tool=tool_name,
                 duration_ms=int((time.perf_counter() - start) * 1000),
-                redacted_error=f"{type(exc).__name__}: {exc}",
+                redacted_error=redacted_msg,
             )
+            # Defense-in-depth scrub for the MCP JSON-RPC channel. ApiException-derived already
+            # passed through `_api_error` (redacted RuntimeError), so skip that path; for everything
+            # else, write the redacted message into the exception's args so re-raise carries no raw
+            # token. TimeoutError has empty args by default — fill it with our meaningful message.
+            if not isinstance(exc, RuntimeError):
+                try:
+                    if isinstance(exc, asyncio.TimeoutError) and not exc.args:
+                        exc.args = (redacted_msg,)
+                    elif (
+                        exc.args
+                        and isinstance(exc.args[0], str)
+                        and redact(exc.args[0]) != exc.args[0]
+                    ):
+                        exc.args = (redact(exc.args[0]), *exc.args[1:])
+                except (AttributeError, TypeError):
+                    pass  # ^ A few exception classes lock .args; leaving them alone is safe.
             raise
         emit(
             "tool.ok",

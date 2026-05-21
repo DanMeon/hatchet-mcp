@@ -1,7 +1,8 @@
 """Reliability wrapper: retry + 30s deadline + Retry-After + idempotency-gated retry at registration time."""
 
 import asyncio
-from typing import Any
+import inspect
+from typing import Annotated, Any
 
 import pytest
 from hatchet_sdk.clients.rest.exceptions import (
@@ -10,6 +11,7 @@ from hatchet_sdk.clients.rest.exceptions import (
     ServiceException,
     TooManyRequestsException,
 )
+from pydantic import Field
 
 import hatchet_mcp._shared as shared
 import hatchet_mcp.app as app
@@ -36,7 +38,7 @@ def _capture_sleep(monkeypatch: pytest.MonkeyPatch) -> list[float]:
 
 # * AC-1 — exponential-backoff retry on 5xx / 429 / transport errors; 4xx surfaces immediately
 @pytest.mark.spec("v0.2.0/reliability#AC-1")
-async def test_503_retries_three_times_then_surfaces(
+async def test_503_exhausts_retries_then_surfaces(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _no_jitter(monkeypatch)
@@ -51,8 +53,9 @@ async def test_503_retries_three_times_then_surfaces(
     wrapped = shared._reliability_wrap(always_503, retry=True)
     with pytest.raises(RuntimeError, match="Hatchet API error"):
         await wrapped()
-    assert counter["n"] == 3
-    assert sleep_calls == [1.0, 2.0]
+    # Spec: 4 attempts (initial + 3 retries), 3 sleeps with backoff series 1s/2s/4s.
+    assert counter["n"] == 4
+    assert sleep_calls == [1.0, 2.0, 4.0]
 
 
 @pytest.mark.spec("v0.2.0/reliability#AC-1")
@@ -107,8 +110,8 @@ async def test_connection_error_retries(monkeypatch: pytest.MonkeyPatch) -> None
     wrapped = shared._reliability_wrap(conn_err, retry=True)
     with pytest.raises(RuntimeError, match="Hatchet API error"):
         await wrapped()
-    assert counter["n"] == 3
-    assert sleep_calls == [1.0, 2.0]
+    assert counter["n"] == 4
+    assert sleep_calls == [1.0, 2.0, 4.0]
 
 
 # * AC-2 — 429 honors Retry-After clamped to 10s; falls back to backoff when missing
@@ -130,8 +133,9 @@ async def test_429_retry_after_above_cap_clamps_to_10s(
     wrapped = shared._reliability_wrap(returns_429, retry=True)
     with pytest.raises(RuntimeError, match="Hatchet API error"):
         await wrapped()
-    assert counter["n"] == 3
-    assert sleep_calls == [10.0, 10.0]
+    assert counter["n"] == 4
+    # Three sleeps: each Retry-After=30 clamps to the 10s cap, dominating the 1s/2s/4s backoff.
+    assert sleep_calls == [10.0, 10.0, 10.0]
 
 
 @pytest.mark.spec("v0.2.0/reliability#AC-2")
@@ -147,7 +151,7 @@ async def test_429_uses_backoff_when_no_retry_after(
     wrapped = shared._reliability_wrap(returns_429_no_header, retry=True)
     with pytest.raises(RuntimeError, match="Hatchet API error"):
         await wrapped()
-    assert sleep_calls == [1.0, 2.0]
+    assert sleep_calls == [1.0, 2.0, 4.0]
 
 
 @pytest.mark.spec("v0.2.0/reliability#AC-2")
@@ -166,7 +170,7 @@ async def test_429_retry_after_below_backoff_keeps_backoff_floor(
     with pytest.raises(RuntimeError, match="Hatchet API error"):
         await wrapped()
     # max(backoff, retry_after=0) keeps the backoff floor; 429 still races to the deadline.
-    assert sleep_calls == [1.0, 2.0]
+    assert sleep_calls == [1.0, 2.0, 4.0]
 
 
 @pytest.mark.spec("v0.2.0/reliability#AC-2")
@@ -184,7 +188,7 @@ async def test_429_malformed_retry_after_ignored(
     wrapped = shared._reliability_wrap(returns_429_http_date, retry=True)
     with pytest.raises(RuntimeError, match="Hatchet API error"):
         await wrapped()
-    assert sleep_calls == [1.0, 2.0]
+    assert sleep_calls == [1.0, 2.0, 4.0]
 
 
 # * AC-3 — non-idempotent mutating tools (idempotent=False) skip the retry layer
@@ -236,8 +240,8 @@ async def test_idempotent_mutation_503_retries(
     tool = app.mcp._tool_manager._tools["pause_workflow"]
     with pytest.raises(RuntimeError, match="Hatchet API error"):
         await tool.fn(workflow_id="wf1")
-    assert counter["n"] == 3
-    assert sleep_calls == [1.0, 2.0]
+    assert counter["n"] == 4
+    assert sleep_calls == [1.0, 2.0, 4.0]
 
 
 @pytest.mark.spec("v0.2.0/reliability#AC-3")
@@ -269,8 +273,12 @@ async def test_deadline_surfaces_timeout(monkeypatch: pytest.MonkeyPatch) -> Non
         await asyncio.Event().wait()
 
     wrapped = shared._reliability_wrap(hang, retry=False)
-    with pytest.raises(asyncio.TimeoutError):
+    with pytest.raises(asyncio.TimeoutError) as excinfo:
         await wrapped()
+    # The wrapper rewrites the TimeoutError args with a meaningful message naming the tool
+    # and the deadline, so the MCP JSON-RPC error channel doesn't surface an empty string.
+    assert "hang" in str(excinfo.value)
+    assert "0.05" in str(excinfo.value)
 
 
 @pytest.mark.spec("v0.2.0/reliability#AC-4")
@@ -286,3 +294,27 @@ async def test_deadline_applies_to_non_idempotent_tools_too(
     wrapped = shared._reliability_wrap(hang, retry=False)
     with pytest.raises(asyncio.TimeoutError):
         await wrapped()
+
+
+# * Regression — functools.wraps must keep fn's signature visible through inspect.signature
+# so FastMCP's func_metadata can build the same arg model as if there were no wrap (otherwise
+# every tool's input schema collapses to **kwargs — a silent disaster at register time).
+def test_wrapper_preserves_signature_for_fastmcp_introspection() -> None:
+    async def my_handler(
+        workflow_id: Annotated[str, Field(description="The workflow ID.")],
+        limit: Annotated[int | None, Field(description="Max items.")] = None,
+        until: Annotated[str | None, Field(description="Upper bound.")] = None,
+    ) -> dict[str, Any]:
+        return {"workflow_id": workflow_id}
+
+    wrapped = shared._reliability_wrap(my_handler, retry=True)
+
+    sig = inspect.signature(wrapped, eval_str=True)
+    assert list(sig.parameters) == ["workflow_id", "limit", "until"]
+    # Defaults are preserved (FastMCP reads these to mark params as optional in the schema).
+    assert sig.parameters["limit"].default is None
+    assert sig.parameters["until"].default is None
+    # Type hints survive — pydantic's create_model in FastMCP relies on them for the arg model.
+    assert wrapped.__wrapped__ is my_handler  # type: ignore[attr-defined]
+    hints = my_handler.__annotations__
+    assert wrapped.__annotations__ == hints

@@ -167,7 +167,9 @@ async def test_wrapper_timeout_emits_tool_error(
     assert len(records) == 1
     assert records[0]["event"] == "tool.error"
     assert records[0]["tool"] == "hang"
-    assert "TimeoutError" in records[0]["redacted_error"]
+    # P2-2: the timeout record names the tool and the deadline, not an empty `TimeoutError:`.
+    assert "hang" in records[0]["redacted_error"]
+    assert "0.05" in records[0]["redacted_error"]
 
 
 @pytest.mark.spec("v0.2.0/reliability#AC-5")
@@ -186,8 +188,34 @@ async def test_wrapper_retry_storm_emits_only_one_record(
     wrapped = shared._reliability_wrap(fails, retry=True)
     with pytest.raises(RuntimeError):
         await wrapped()
-    assert counter["n"] == 3
+    # Spec: 4 attempts (initial + 3 retries) all fail, but only one tool.error record emits.
+    assert counter["n"] == 4
     assert len(_records(capsys)) == 1
+
+
+@pytest.mark.spec("v0.2.0/reliability#AC-6")
+async def test_jsonrpc_channel_scrubs_non_api_exception_args(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # P2-3 defense-in-depth: ApiException flows through `_api_error` which already redacts.
+    # A non-ApiException raise (validation error, an unexpected raise from SDK glue, etc.)
+    # could otherwise carry the raw token to the JSON-RPC channel. The wrapper scrubs the
+    # args of such exceptions before re-raise — type is preserved, only the message is.
+    monkeypatch.setenv("HATCHET_CLIENT_TOKEN", "SECRET-VAL-TOKEN")
+
+    async def raises_value_error_with_token() -> None:
+        raise ValueError("validation failed near SECRET-VAL-TOKEN in input")
+
+    wrapped = shared._reliability_wrap(raises_value_error_with_token, retry=False)
+    with pytest.raises(ValueError) as excinfo:
+        await wrapped()
+    # JSON-RPC channel: the raised ValueError must not carry the raw token.
+    assert "SECRET-VAL-TOKEN" not in str(excinfo.value)
+    assert "***REDACTED***" in str(excinfo.value)
+    # Exception type is preserved (callers can still pattern-match on ValueError).
+    assert isinstance(excinfo.value, ValueError)
+    # stderr surface scrubbed too.
+    assert "SECRET-VAL-TOKEN" not in capsys.readouterr().err
 
 
 # * AC-6 — JSON-RPC channel preserves redact via `_api_error` (independent of the stderr surface)
