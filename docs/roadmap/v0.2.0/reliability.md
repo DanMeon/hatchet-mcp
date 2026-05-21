@@ -1,7 +1,7 @@
 ---
-status: Draft
+status: Frozen
 description: "v0.2.0 — idempotent retry + 30s deadline + structured stderr logs + 'get_server_info' diagnostics tool"
-target: v0.2.0
+ga: v0.2.0
 last_updated: 2026-05-21
 ---
 

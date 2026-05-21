@@ -7,6 +7,54 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-05-21
+
+### Added
+
+- New read tool **`get_server_info`** and matching resource **`hatchet://server/info`**, both
+  delegating to a single `_build_server_info` helper and returning a byte-identical JSON
+  payload (`read_only`, `read_tool_count`, `mutating_tool_count`, `server_url_source` —
+  `"token"` or `"override"` —, `hatchet_sdk_version`, `python_version`). Neither surface
+  carries the Hatchet token. Read tool count is now **25** (`src/hatchet_mcp/tools/server_info.py`,
+  `src/hatchet_mcp/resources.py`).
+- **Per-call 30s deadline** on every registered tool via `asyncio.wait_for`, so a hung Hatchet
+  can no longer lock the stdio session (`src/hatchet_mcp/_shared.py`).
+- **Idempotent-only retry** on transient `5xx`, `429`, and connection-class
+  (`RestTransportError`) failures: 3 attempts, exponential backoff (1s / 2s / 4s with ±25%
+  jitter), and `Retry-After` honored on `429` clamped to 10s. Non-idempotent mutations
+  (`trigger_workflow`, `push_event`, `cancel_runs`, `replay_runs`, `restore_task`, every
+  `create_*`) keep the deadline but skip the retry layer, gated at registration time by
+  `ToolAnnotations.idempotentHint` (`src/hatchet_mcp/_shared.py`, `src/hatchet_mcp/server.py`).
+- **Structured stderr logging**: one JSON-line record per tool invocation
+  (`event=tool.ok` / `tool.error`, with `tool`, `duration_ms`, and a redacted `redacted_error`
+  on failure) and per server lifecycle event (`event=server.start` / `server.error`). Records
+  include input-validation failures that raise before any Hatchet call, because the timer
+  starts at wrapper entry (`src/hatchet_mcp/_logging.py`).
+
+### Changed
+
+- Startup banner is now an `event=server.start` JSON record on stderr instead of the
+  unstructured `hatchet-mcp: starting…` print; the `ConfigError` exit emits a matching
+  `event=server.error` record (`src/hatchet_mcp/server.py`).
+- `server.start` / `get_server_info` use the same origin label `"token"` / `"override"` for
+  the server URL source so a single grep covers both channels.
+- Tool handlers no longer wrap each Hatchet call in `try / except ApiException`; the
+  reliability wrapper owns the SDK-exception-to-`RuntimeError` translation centrally, and the
+  raw exception flows through the retry layer first.
+
+### Security
+
+- The stderr structured-log channel is independently redacted at format time — every string
+  field, at any nesting depth, runs through `redact()` before emit. The existing MCP JSON-RPC
+  error channel redaction via `_api_error` is unchanged; the two surfaces own independent
+  redaction with neither acting as the other's gate (`src/hatchet_mcp/_logging.py`,
+  `src/hatchet_mcp/_shared.py`).
+
+### Docs
+
+- Freeze the `v0.2.0/reliability` spec and its paired ADR (`Draft → Frozen`, `target → ga`),
+  and bump `docs/roadmap/README.md`'s Status to v0.2.0.
+
 ## [0.1.1] - 2026-05-21
 
 ### Security
@@ -52,6 +100,7 @@ Initial release.
 - Environment-only configuration; fail-fast startup when `HATCHET_CLIENT_TOKEN` is missing.
 - PyPI publishing via GitHub Actions Trusted Publishing (OIDC).
 
-[Unreleased]: https://github.com/DanMeon/hatchet-mcp/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/DanMeon/hatchet-mcp/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/DanMeon/hatchet-mcp/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/DanMeon/hatchet-mcp/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/DanMeon/hatchet-mcp/releases/tag/v0.1.0
