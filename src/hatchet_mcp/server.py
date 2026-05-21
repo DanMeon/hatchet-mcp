@@ -1,12 +1,13 @@
 """FastMCP stdio server exposing Hatchet over its REST API.
 
-Twenty-four read-only tools are always registered; seventeen mutating tools (run control, event
-push, pause/resume, cron/scheduled/filter management) are registered only when
+Twenty-five read-only tools are always registered; seventeen mutating tools (run control,
+event push, pause/resume, cron/scheduled/filter management) are registered only when
 ``HATCHET_MCP_READ_ONLY=false`` and carry destructive annotations so clients can prompt for
 approval. Tools live in ``tools/`` by domain, each exposing READ_TOOLS / MUTATING_TOOLS
-catalogs; this module aggregates them, registers what the mode allows, and serves. All tools
-map to verified ``hatchet-sdk`` calls and return the SDK's Pydantic responses serialized to
-JSON (``by_alias=True``, matching the Hatchet REST/dashboard shape).
+catalogs; this module aggregates them, registers what the mode allows, and serves. All
+operational tools map to verified ``hatchet-sdk`` calls and return the SDK's Pydantic
+responses serialized to JSON (``by_alias=True``, matching the Hatchet REST/dashboard shape);
+``get_server_info`` is the one self-describing exception (see ``tools/server_info.py``).
 """
 
 import logging
@@ -23,6 +24,7 @@ from hatchet_mcp.tools import (
     observability,
     runs,
     schedules,
+    server_info,
     tasks,
     workers,
     workflows,
@@ -49,6 +51,7 @@ _TOOL_MODULES = (
     schedules,
     filters,
     observability,
+    server_info,
 )
 
 READ_TOOLS = [tool for module in _TOOL_MODULES for tool in module.READ_TOOLS]
@@ -110,7 +113,7 @@ def main() -> None:
         register_mutating_tools(app.mcp)
 
     tool_count = len(READ_TOOLS) + (0 if config.read_only else len(MUTATING_TOOLS))
-    url_state = "override" if config.server_url_override else "from token"
+    url_state = "override" if config.server_url_override else "token"
     emit(
         "server.start",
         read_only=config.read_only,

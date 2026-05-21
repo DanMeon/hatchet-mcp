@@ -32,6 +32,14 @@ Maps spec acceptance criteria (AC-N) ↔ tests, collected from `@pytest.mark.spe
 | v0.2.0/reliability | — | `tests/test_reliability.py::test_idempotent_mutation_503_retries` |
 | v0.2.0/reliability | — | `tests/test_reliability.py::test_mutating_idempotency_split_matches_catalog` |
 | v0.2.0/reliability | — | `tests/test_reliability.py::test_non_idempotent_503_surfaces_without_retry` |
+| v0.2.0/reliability | — | `tests/test_server_info.py::test_get_server_info_registered_as_read_tool` |
+| v0.2.0/reliability | — | `tests/test_server_info.py::test_payload_has_exact_keys` |
+| v0.2.0/reliability | — | `tests/test_server_info.py::test_payload_never_carries_token` |
+| v0.2.0/reliability | — | `tests/test_server_info.py::test_payload_read_only_reflects_flag` |
+| v0.2.0/reliability | — | `tests/test_server_info.py::test_payload_versions_well_formed` |
+| v0.2.0/reliability | — | `tests/test_server_info.py::test_resource_byte_identical_to_tool` |
+| v0.2.0/reliability | — | `tests/test_server_info.py::test_resource_keys_match_tool` |
+| v0.2.0/reliability | — | `tests/test_server_info.py::test_server_url_source_reflects_env` |
 | v0.2.0/reliability | AC-1 | `tests/test_reliability.py::test_404_surfaces_on_first_attempt` |
 | v0.2.0/reliability | AC-1 | `tests/test_reliability.py::test_503_recovers_on_third_attempt` |
 | v0.2.0/reliability | AC-1 | `tests/test_reliability.py::test_503_retries_three_times_then_surfaces` |
@@ -57,3 +65,11 @@ Maps spec acceptance criteria (AC-N) ↔ tests, collected from `@pytest.mark.spe
 | v0.2.0/reliability | AC-6 | `tests/test_emitter.py::test_emit_redacts_nested_string` |
 | v0.2.0/reliability | AC-6 | `tests/test_emitter.py::test_emit_redacts_token_prefix` |
 | v0.2.0/reliability | AC-6 | `tests/test_emitter.py::test_jsonrpc_channel_strips_token_from_error` |
+| v0.2.0/reliability | AC-7 | `tests/test_server_info.py::test_get_server_info_registered_as_read_tool` |
+| v0.2.0/reliability | AC-7 | `tests/test_server_info.py::test_payload_has_exact_keys` |
+| v0.2.0/reliability | AC-7 | `tests/test_server_info.py::test_payload_never_carries_token` |
+| v0.2.0/reliability | AC-7 | `tests/test_server_info.py::test_payload_read_only_reflects_flag` |
+| v0.2.0/reliability | AC-7 | `tests/test_server_info.py::test_payload_versions_well_formed` |
+| v0.2.0/reliability | AC-7 | `tests/test_server_info.py::test_server_url_source_reflects_env` |
+| v0.2.0/reliability | AC-8 | `tests/test_server_info.py::test_resource_byte_identical_to_tool` |
+| v0.2.0/reliability | AC-8 | `tests/test_server_info.py::test_resource_keys_match_tool` |

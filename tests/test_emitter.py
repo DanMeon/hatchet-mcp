@@ -254,5 +254,5 @@ def test_server_start_record_on_normal_boot(
     starts = [r for r in records if r["event"] == "server.start"]
     assert len(starts) == 1
     assert starts[0]["read_only"] is True
-    assert starts[0]["server_url"] in {"from token", "override"}
+    assert starts[0]["server_url"] in {"token", "override"}
     assert isinstance(starts[0]["tools"], int)
