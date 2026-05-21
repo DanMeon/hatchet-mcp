@@ -10,6 +10,7 @@ import asyncio
 import functools
 import json
 import random
+import time
 from collections.abc import Callable
 from datetime import datetime, timezone
 from enum import Enum
@@ -21,6 +22,7 @@ from hatchet_sdk.clients.rest.models.v1_task_status import V1TaskStatus
 from mcp.types import ToolAnnotations
 from pydantic import BaseModel
 
+from hatchet_mcp._logging import emit
 from hatchet_mcp.client import get_rest
 from hatchet_mcp.config import redact
 
@@ -225,15 +227,21 @@ def _retry_after_seconds(exc: ApiException) -> float | None:
 
 
 def _reliability_wrap(fn: Callable[..., Any], *, retry: bool) -> Callable[..., Any]:
-    """Wrap `fn` with a 30s deadline (always) and exponential-backoff retry (only when retry=True).
+    """Wrap `fn` with a 30s deadline, optional retry, and a single structured stderr record per invocation.
 
-    Owns the ApiException -> RuntimeError translation that handlers used to do inline, so the
-    retry loop sees the raw SDK exception (with status + headers) and only the final survivor
-    is run through `_api_error` (which redacts + caps the message). `functools.wraps`
-    propagates fn's `__wrapped__`, `__name__`, `__annotations__`, so FastMCP's
-    `inspect.signature(fn, eval_str=True)` introspection sees the original parameters and
-    the generated arg model is byte-identical to wrapping nothing.
+    Owns three concerns wrapped around every tool call: (1) `asyncio.wait_for` per-call
+    deadline, (2) idempotent retry loop (when `retry=True`), (3) one ``tool.ok`` or
+    ``tool.error`` JSON-line record emitted on stderr (AC-5 — including failures from
+    input-validation helpers like `_parse_dt` / `_parse_statuses` that raise before any
+    Hatchet call, because the timer starts at wrapper entry). Also owns the
+    ApiException -> RuntimeError translation that handlers used to do inline, so the
+    retry loop sees the raw SDK exception and only the final survivor is run through
+    `_api_error` (which redacts + caps the message). `functools.wraps` propagates fn's
+    `__wrapped__`, `__name__`, `__annotations__`, so FastMCP's
+    `inspect.signature(fn, eval_str=True)` introspection sees the original parameters
+    and the generated arg model is byte-identical to wrapping nothing.
     """
+    tool_name = fn.__name__
 
     @functools.wraps(fn)
     async def wrapper(*args: Any, **kwargs: Any) -> Any:
@@ -262,9 +270,27 @@ def _reliability_wrap(fn: Callable[..., Any], *, retry: bool) -> Callable[..., A
             assert last is not None
             raise last
 
+        start = time.perf_counter()
         try:
-            return await asyncio.wait_for(_attempts(), timeout=_PER_CALL_TIMEOUT_S)
-        except ApiException as exc:
-            raise _api_error(exc) from None
+            try:
+                result = await asyncio.wait_for(
+                    _attempts(), timeout=_PER_CALL_TIMEOUT_S
+                )
+            except ApiException as exc:
+                raise _api_error(exc) from None
+        except BaseException as exc:
+            emit(
+                "tool.error",
+                tool=tool_name,
+                duration_ms=int((time.perf_counter() - start) * 1000),
+                redacted_error=f"{type(exc).__name__}: {exc}",
+            )
+            raise
+        emit(
+            "tool.ok",
+            tool=tool_name,
+            duration_ms=int((time.perf_counter() - start) * 1000),
+        )
+        return result
 
     return wrapper

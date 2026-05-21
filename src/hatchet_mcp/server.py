@@ -10,11 +10,11 @@ JSON (``by_alias=True``, matching the Hatchet REST/dashboard shape).
 """
 
 import logging
-import sys
 
 from mcp.server.fastmcp import FastMCP
 
 from hatchet_mcp import _shared, app, prompts, resources
+from hatchet_mcp._logging import emit
 from hatchet_mcp.client import init_hatchet
 from hatchet_mcp.config import ConfigError, load_config
 from hatchet_mcp.tools import (
@@ -94,7 +94,7 @@ def main() -> None:
         config = load_config()
         init_hatchet()
     except ConfigError as exc:
-        print(f"hatchet-mcp: {exc}", file=sys.stderr, flush=True)
+        emit("server.error", error=str(exc))
         raise SystemExit(1) from None
 
     _shared._read_only = config.read_only
@@ -111,11 +111,11 @@ def main() -> None:
 
     tool_count = len(READ_TOOLS) + (0 if config.read_only else len(MUTATING_TOOLS))
     url_state = "override" if config.server_url_override else "from token"
-    print(
-        f"hatchet-mcp: starting stdio server "
-        f"(read_only={config.read_only}, server_url={url_state}, tools={tool_count})",
-        file=sys.stderr,
-        flush=True,
+    emit(
+        "server.start",
+        read_only=config.read_only,
+        server_url=url_state,
+        tools=tool_count,
     )
 
     app.mcp.run(transport="stdio")
