@@ -3,20 +3,16 @@
 from collections.abc import Callable
 from typing import Annotated, Any
 
-from hatchet_sdk.clients.rest.exceptions import ApiException
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
-from hatchet_mcp._shared import _api_error, _destructive, _dump, _require_writable
+from hatchet_mcp._shared import _destructive, _dump, _require_writable
 from hatchet_mcp.client import get_hatchet
 
 
 async def list_workers() -> dict[str, Any]:
     h = get_hatchet()
-    try:
-        result = await h.workers.aio_list()
-    except ApiException as exc:
-        raise _api_error(exc) from None
+    result = await h.workers.aio_list()
     return _dump(result)
 
 
@@ -24,10 +20,7 @@ async def get_worker(
     worker_id: Annotated[str, Field(description="The worker ID (UUID) to fetch.")],
 ) -> dict[str, Any]:
     h = get_hatchet()
-    try:
-        result = await h.workers.aio_get(worker_id)
-    except ApiException as exc:
-        raise _api_error(exc) from None
+    result = await h.workers.aio_get(worker_id)
     return _dump(result)
 
 
@@ -36,10 +29,7 @@ async def pause_worker(
 ) -> dict[str, Any]:
     _require_writable()
     h = get_hatchet()
-    try:
-        result = await h.workers.aio_pause(worker_id)
-    except ApiException as exc:
-        raise _api_error(exc) from None
+    result = await h.workers.aio_pause(worker_id)
     return _dump(result)
 
 
@@ -48,10 +38,7 @@ async def resume_worker(
 ) -> dict[str, Any]:
     _require_writable()
     h = get_hatchet()
-    try:
-        result = await h.workers.aio_unpause(worker_id)
-    except ApiException as exc:
-        raise _api_error(exc) from None
+    result = await h.workers.aio_unpause(worker_id)
     return _dump(result)
 
 

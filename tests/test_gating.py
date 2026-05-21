@@ -1,4 +1,4 @@
-"""Read-only gate: 24 read tools always; 17 mutating only after registration; handlers refuse in read-only."""
+"""Read-only gate: 25 read tools always; 17 mutating only after registration; handlers refuse in read-only."""
 
 import pytest
 from mcp.types import ToolAnnotations
@@ -39,16 +39,16 @@ def _mutating_names():
     return {name for _, name, _, _ in server.MUTATING_TOOLS}
 
 
-def test_read_only_registers_exactly_24(server_module):
+def test_read_only_registers_exactly_25(server_module):
     names = _tool_names()
-    assert len(names) == 24
+    assert len(names) == 25
     assert names.isdisjoint(_mutating_names())
 
 
-def test_read_write_registers_all_41(server_module):
+def test_read_write_registers_all_42(server_module):
     server.register_mutating_tools(app.mcp)
     names = _tool_names()
-    assert len(names) == 41
+    assert len(names) == 42
     assert _mutating_names().issubset(names)
 
 

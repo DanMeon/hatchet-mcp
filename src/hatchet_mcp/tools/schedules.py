@@ -3,13 +3,11 @@
 from collections.abc import Callable
 from typing import Annotated, Any
 
-from hatchet_sdk.clients.rest.exceptions import ApiException
 from hatchet_sdk.clients.rest.models.scheduled_run_status import ScheduledRunStatus
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
 from hatchet_mcp._shared import (
-    _api_error,
     _clamp_limit,
     _destructive,
     _dump,
@@ -41,17 +39,14 @@ async def list_crons(
     offset: Annotated[int | None, Field(description="Pagination offset.")] = None,
 ) -> dict[str, Any]:
     h = get_hatchet()
-    try:
-        result = await h.cron.aio_list(
-            offset=offset,
-            limit=_clamp_limit(limit),
-            workflow_id=workflow_id,
-            additional_metadata=additional_metadata,
-            workflow_name=workflow_name,
-            cron_name=cron_name,
-        )
-    except ApiException as exc:
-        raise _api_error(exc) from None
+    result = await h.cron.aio_list(
+        offset=offset,
+        limit=_clamp_limit(limit),
+        workflow_id=workflow_id,
+        additional_metadata=additional_metadata,
+        workflow_name=workflow_name,
+        cron_name=cron_name,
+    )
     return _dump(result)
 
 
@@ -59,10 +54,7 @@ async def get_cron(
     cron_id: Annotated[str, Field(description="The cron trigger ID (UUID).")],
 ) -> dict[str, Any]:
     h = get_hatchet()
-    try:
-        result = await h.cron.aio_get(cron_id)
-    except ApiException as exc:
-        raise _api_error(exc) from None
+    result = await h.cron.aio_get(cron_id)
     return _dump(result)
 
 
@@ -91,16 +83,13 @@ async def list_scheduled(
     status_enums = _parse_enum_list(
         statuses, ScheduledRunStatus, field="scheduled status"
     )
-    try:
-        result = await h.scheduled.aio_list(
-            offset=offset,
-            limit=_clamp_limit(limit),
-            workflow_id=workflow_id,
-            statuses=status_enums,
-            additional_metadata=additional_metadata,
-        )
-    except ApiException as exc:
-        raise _api_error(exc) from None
+    result = await h.scheduled.aio_list(
+        offset=offset,
+        limit=_clamp_limit(limit),
+        workflow_id=workflow_id,
+        statuses=status_enums,
+        additional_metadata=additional_metadata,
+    )
     return _dump(result)
 
 
@@ -133,17 +122,14 @@ async def create_cron(
 ) -> dict[str, Any]:
     _require_writable()
     h = get_hatchet()
-    try:
-        result = await h.cron.aio_create(
-            workflow_name=workflow_name,
-            cron_name=cron_name,
-            expression=expression,
-            input=input or {},
-            additional_metadata=additional_metadata or {},
-            priority=priority,
-        )
-    except ApiException as exc:
-        raise _api_error(exc) from None
+    result = await h.cron.aio_create(
+        workflow_name=workflow_name,
+        cron_name=cron_name,
+        expression=expression,
+        input=input or {},
+        additional_metadata=additional_metadata or {},
+        priority=priority,
+    )
     return _dump(result)
 
 
@@ -152,10 +138,7 @@ async def delete_cron(
 ) -> dict[str, Any]:
     _require_writable()
     h = get_hatchet()
-    try:
-        await h.cron.aio_delete(cron_id)
-    except ApiException as exc:
-        raise _api_error(exc) from None
+    await h.cron.aio_delete(cron_id)
     return {"deleted": True, "cron_id": cron_id}
 
 
@@ -185,15 +168,12 @@ async def create_scheduled(
     if trigger_dt is None:
         raise ValueError("trigger_at is required (ISO 8601 datetime).")
     h = get_hatchet()
-    try:
-        result = await h.scheduled.aio_create(
-            workflow_name=workflow_name,
-            trigger_at=trigger_dt,
-            input=input or {},
-            additional_metadata=additional_metadata or {},
-        )
-    except ApiException as exc:
-        raise _api_error(exc) from None
+    result = await h.scheduled.aio_create(
+        workflow_name=workflow_name,
+        trigger_at=trigger_dt,
+        input=input or {},
+        additional_metadata=additional_metadata or {},
+    )
     return _dump(result)
 
 
@@ -204,10 +184,7 @@ async def delete_scheduled(
 ) -> dict[str, Any]:
     _require_writable()
     h = get_hatchet()
-    try:
-        await h.scheduled.aio_delete(scheduled_id)
-    except ApiException as exc:
-        raise _api_error(exc) from None
+    await h.scheduled.aio_delete(scheduled_id)
     return {"deleted": True, "scheduled_id": scheduled_id}
 
 
@@ -227,10 +204,7 @@ async def reschedule(
     if trigger_dt is None:
         raise ValueError("trigger_at is required (ISO 8601 datetime).")
     h = get_hatchet()
-    try:
-        result = await h.scheduled.aio_update(scheduled_id, trigger_dt)
-    except ApiException as exc:
-        raise _api_error(exc) from None
+    result = await h.scheduled.aio_update(scheduled_id, trigger_dt)
     return _dump(result)
 
 
