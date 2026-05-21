@@ -4,12 +4,10 @@ from collections.abc import Callable
 from typing import Annotated, Any
 
 from hatchet_sdk.clients.rest.api.task_api import TaskApi
-from hatchet_sdk.clients.rest.exceptions import ApiException
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
 from hatchet_mcp._shared import (
-    _api_error,
     _clamp_limit,
     _destructive,
     _dump,
@@ -25,10 +23,7 @@ async def get_task(
     task_run_id: Annotated[str, Field(description="The task run ID (UUID) to fetch.")],
 ) -> dict[str, Any]:
     h = get_hatchet()
-    try:
-        result = await h.runs.aio_get_task_run(task_run_id)
-    except ApiException as exc:
-        raise _api_error(exc) from None
+    result = await h.runs.aio_get_task_run(task_run_id)
     return _dump_item(result)
 
 
@@ -46,15 +41,12 @@ async def get_task_logs(
     until: Annotated[str | None, Field(description="ISO 8601 end time.")] = None,
 ) -> dict[str, Any]:
     h = get_hatchet()
-    try:
-        result = await h.logs.aio_list(
-            task_run_id=task_run_id,
-            limit=_clamp_limit(limit, default=1000, cap=1000),
-            since=_parse_dt(since, field="since"),
-            until=_parse_dt(until, field="until"),
-        )
-    except ApiException as exc:
-        raise _api_error(exc) from None
+    result = await h.logs.aio_list(
+        task_run_id=task_run_id,
+        limit=_clamp_limit(limit, default=1000, cap=1000),
+        since=_parse_dt(since, field="since"),
+        until=_parse_dt(until, field="until"),
+    )
     return _dump(result)
 
 
@@ -68,14 +60,11 @@ async def list_task_events(
     ] = None,
     offset: Annotated[int | None, Field(description="Pagination offset.")] = None,
 ) -> dict[str, Any]:
-    try:
-        result = await _rest_call(
-            lambda client, _tenant: TaskApi(client).v1_task_event_list(
-                task=task_run_id, offset=offset, limit=_clamp_limit(limit)
-            )
+    result = await _rest_call(
+        lambda client, _tenant: TaskApi(client).v1_task_event_list(
+            task=task_run_id, offset=offset, limit=_clamp_limit(limit)
         )
-    except ApiException as exc:
-        raise _api_error(exc) from None
+    )
     return _dump(result)
 
 
@@ -86,12 +75,9 @@ async def restore_task(
     ],
 ) -> dict[str, Any]:
     _require_writable()
-    try:
-        result = await _rest_call(
-            lambda client, _tenant: TaskApi(client).v1_task_restore(task=task_id)
-        )
-    except ApiException as exc:
-        raise _api_error(exc) from None
+    result = await _rest_call(
+        lambda client, _tenant: TaskApi(client).v1_task_restore(task=task_id)
+    )
     return _dump(result)
 
 

@@ -62,3 +62,6 @@ typeCheckingMode = "standard"
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+    "spec(spec_id): map a test to an acceptance criterion in docs/roadmap/<vX.Y.Z>/<topic>.md (format 'vX.Y.Z/topic#AC-N'). See docs/CONVENTIONS.md § Trace Report.",
+]

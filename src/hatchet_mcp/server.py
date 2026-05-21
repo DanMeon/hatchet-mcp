@@ -62,15 +62,25 @@ def muzzle_dependency_loggers() -> None:
 
 
 def register_read_tools(mcp: FastMCP) -> None:
-    """Register every read-only tool. Always called — these are visible in both modes."""
+    """Register every read-only tool, wrapped with retry+deadline (reads are inherently idempotent)."""
     for fn, name, description in READ_TOOLS:
-        mcp.add_tool(fn, name=name, description=description)
+        mcp.add_tool(
+            _shared._reliability_wrap(fn, retry=True),
+            name=name,
+            description=description,
+        )
 
 
 def register_mutating_tools(mcp: FastMCP) -> None:
-    """Register every mutating tool. Called only when read-only mode is off, keeping them hidden by default."""
+    """Register every mutating tool. Idempotent handlers get retry+deadline; non-idempotent get deadline only.
+
+    Read-only mode skips this entirely so mutations are invisible to the protocol by default.
+    """
     for fn, name, description, annotations in MUTATING_TOOLS:
-        mcp.add_tool(fn, name=name, description=description, annotations=annotations)
+        wrapped = _shared._reliability_wrap(fn, retry=bool(annotations.idempotentHint))
+        mcp.add_tool(
+            wrapped, name=name, description=description, annotations=annotations
+        )
 
 
 def main() -> None:

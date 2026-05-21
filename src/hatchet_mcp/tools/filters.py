@@ -3,7 +3,6 @@
 from collections.abc import Callable
 from typing import Annotated, Any
 
-from hatchet_sdk.clients.rest.exceptions import ApiException
 from hatchet_sdk.clients.rest.models.v1_update_filter_request import (
     V1UpdateFilterRequest,
 )
@@ -11,7 +10,6 @@ from mcp.types import ToolAnnotations
 from pydantic import Field
 
 from hatchet_mcp._shared import (
-    _api_error,
     _clamp_limit,
     _destructive,
     _dump,
@@ -33,15 +31,12 @@ async def list_filters(
     offset: Annotated[int | None, Field(description="Pagination offset.")] = None,
 ) -> dict[str, Any]:
     h = get_hatchet()
-    try:
-        result = await h.filters.aio_list(
-            limit=_clamp_limit(limit),
-            offset=offset,
-            workflow_ids=workflow_ids,
-            scopes=scopes,
-        )
-    except ApiException as exc:
-        raise _api_error(exc) from None
+    result = await h.filters.aio_list(
+        limit=_clamp_limit(limit),
+        offset=offset,
+        workflow_ids=workflow_ids,
+        scopes=scopes,
+    )
     return _dump(result)
 
 
@@ -49,10 +44,7 @@ async def get_filter(
     filter_id: Annotated[str, Field(description="The filter ID (UUID).")],
 ) -> dict[str, Any]:
     h = get_hatchet()
-    try:
-        result = await h.filters.aio_get(filter_id)
-    except ApiException as exc:
-        raise _api_error(exc) from None
+    result = await h.filters.aio_get(filter_id)
     return _dump(result)
 
 
@@ -78,15 +70,12 @@ async def cel_debug(
     ] = None,
 ) -> dict[str, Any]:
     h = get_hatchet()
-    try:
-        result = await h.cel.aio_debug(
-            expression=expression,
-            input=input or {},
-            additional_metadata=additional_metadata,
-            filter_payload=filter_payload,
-        )
-    except ApiException as exc:
-        raise _api_error(exc) from None
+    result = await h.cel.aio_debug(
+        expression=expression,
+        input=input or {},
+        additional_metadata=additional_metadata,
+        filter_payload=filter_payload,
+    )
     return _dump(result)
 
 
@@ -110,15 +99,12 @@ async def create_filter(
 ) -> dict[str, Any]:
     _require_writable()
     h = get_hatchet()
-    try:
-        result = await h.filters.aio_create(
-            workflow_id=workflow_id,
-            expression=expression,
-            scope=scope,
-            payload=payload,
-        )
-    except ApiException as exc:
-        raise _api_error(exc) from None
+    result = await h.filters.aio_create(
+        workflow_id=workflow_id,
+        expression=expression,
+        scope=scope,
+        payload=payload,
+    )
     return _dump(result)
 
 
@@ -138,13 +124,10 @@ async def update_filter(
 ) -> dict[str, Any]:
     _require_writable()
     h = get_hatchet()
-    try:
-        result = await h.filters.aio_update(
-            filter_id,
-            V1UpdateFilterRequest(expression=expression, scope=scope, payload=payload),
-        )
-    except ApiException as exc:
-        raise _api_error(exc) from None
+    result = await h.filters.aio_update(
+        filter_id,
+        V1UpdateFilterRequest(expression=expression, scope=scope, payload=payload),
+    )
     return _dump(result)
 
 
@@ -153,10 +136,7 @@ async def delete_filter(
 ) -> dict[str, Any]:
     _require_writable()
     h = get_hatchet()
-    try:
-        result = await h.filters.aio_delete(filter_id)
-    except ApiException as exc:
-        raise _api_error(exc) from None
+    result = await h.filters.aio_delete(filter_id)
     return _dump(result)
 
 

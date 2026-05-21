@@ -5,20 +5,16 @@ from typing import Annotated, Any
 
 from hatchet_sdk.clients.rest.api.observability_api import ObservabilityApi
 from hatchet_sdk.clients.rest.api.workflow_runs_api import WorkflowRunsApi
-from hatchet_sdk.clients.rest.exceptions import ApiException
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
-from hatchet_mcp._shared import _api_error, _clamp_limit, _dump, _parse_dt, _rest_call
+from hatchet_mcp._shared import _clamp_limit, _dump, _parse_dt, _rest_call
 from hatchet_mcp.client import get_hatchet
 
 
 async def get_queue_metrics() -> dict[str, Any]:
     h = get_hatchet()
-    try:
-        queues = await h.metrics.aio_get_queue_metrics()
-    except ApiException as exc:
-        raise _api_error(exc) from None
+    queues = await h.metrics.aio_get_queue_metrics()
     return {"queues": queues}
 
 
@@ -37,14 +33,11 @@ async def get_task_metrics(
     ] = None,
 ) -> dict[str, Any]:
     h = get_hatchet()
-    try:
-        result = await h.metrics.aio_get_task_metrics(
-            since=_parse_dt(since, field="since"),
-            until=_parse_dt(until, field="until"),
-            workflow_ids=workflow_ids,
-        )
-    except ApiException as exc:
-        raise _api_error(exc) from None
+    result = await h.metrics.aio_get_task_metrics(
+        since=_parse_dt(since, field="since"),
+        until=_parse_dt(until, field="until"),
+        workflow_ids=workflow_ids,
+    )
     return _dump(result)
 
 
@@ -56,14 +49,11 @@ async def get_run_timings(
         int | None, Field(description="Max child depth to retrieve in the task tree.")
     ] = None,
 ) -> dict[str, Any]:
-    try:
-        result = await _rest_call(
-            lambda client, _tenant: WorkflowRunsApi(client).v1_workflow_run_get_timings(
-                v1_workflow_run=workflow_run_id, depth=depth
-            )
+    result = await _rest_call(
+        lambda client, _tenant: WorkflowRunsApi(client).v1_workflow_run_get_timings(
+            v1_workflow_run=workflow_run_id, depth=depth
         )
-    except ApiException as exc:
-        raise _api_error(exc) from None
+    )
     return _dump(result)
 
 
@@ -76,17 +66,14 @@ async def get_trace(
     ] = None,
     offset: Annotated[int | None, Field(description="Span pagination offset.")] = None,
 ) -> dict[str, Any]:
-    try:
-        result = await _rest_call(
-            lambda client, tenant: ObservabilityApi(client).v1_observability_get_trace(
-                tenant=tenant,
-                run_external_id=workflow_run_id,
-                offset=offset,
-                limit=_clamp_limit(limit),
-            )
+    result = await _rest_call(
+        lambda client, tenant: ObservabilityApi(client).v1_observability_get_trace(
+            tenant=tenant,
+            run_external_id=workflow_run_id,
+            offset=offset,
+            limit=_clamp_limit(limit),
         )
-    except ApiException as exc:
-        raise _api_error(exc) from None
+    )
     return _dump(result)
 
 
@@ -101,12 +88,9 @@ async def list_rate_limits(
     offset: Annotated[int | None, Field(description="Pagination offset.")] = None,
 ) -> dict[str, Any]:
     h = get_hatchet()
-    try:
-        result = await h.rate_limits.aio_list(
-            offset=offset, limit=_clamp_limit(limit), search=search
-        )
-    except ApiException as exc:
-        raise _api_error(exc) from None
+    result = await h.rate_limits.aio_list(
+        offset=offset, limit=_clamp_limit(limit), search=search
+    )
     return _dump(result)
 
 

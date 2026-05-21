@@ -141,7 +141,7 @@ C — both. A read tool `get_server_info()` (becoming the 25th read tool after t
 
 ### Final Decision
 
-A — reuse `_destructive(idempotent=...)` via register-time inspection. `register_mutating_tools` reads `annotations.idempotentHint` from each catalog tuple and wraps `fn` in the retry-and-deadline wrapper only when True. `register_read_tools` wraps unconditionally. No new config knob, no function-level marker, no catalog-tuple-shape change — the annotation is read where it already lives.
+A — reuse `_destructive(idempotent=...)` via register-time inspection. `register_mutating_tools` reads `annotations.idempotentHint` from each catalog tuple and chooses the wrap variant: idempotent handlers get retry+deadline, non-idempotent ones get a deadline-only wrap (Decision 2 covers every tool — non-idempotent mutations still need the 30s deadline). `register_read_tools` wraps unconditionally with retry+deadline. No new config knob, no function-level marker, no catalog-tuple-shape change — the annotation is read where it already lives.
 
 ### Primary Sources
 

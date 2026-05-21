@@ -9,14 +9,12 @@ from datetime import datetime, timedelta, timezone
 from typing import Annotated, Any, Literal
 
 from hatchet_sdk.clients.rest.api.workflow_runs_api import WorkflowRunsApi
-from hatchet_sdk.clients.rest.exceptions import ApiException
 from hatchet_sdk.clients.v1.api_client import maybe_additional_metadata_to_kv
 from hatchet_sdk.features.runs import BulkCancelReplayOpts
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
 from hatchet_mcp._shared import (
-    _api_error,
     _clamp_limit,
     _destructive,
     _dump,
@@ -76,21 +74,18 @@ async def list_runs(
     offset: Annotated[int | None, Field(description="Pagination offset.")] = None,
 ) -> dict[str, Any]:
     h = get_hatchet()
-    try:
-        result = await h.runs.aio_list(
-            since=_parse_dt(since, field="since"),
-            until=_parse_dt(until, field="until"),
-            statuses=_parse_statuses(statuses),
-            workflow_ids=workflow_ids,
-            worker_id=worker_id,
-            additional_metadata=additional_metadata,
-            only_tasks=only_tasks,
-            include_payloads=include_payloads,
-            limit=_clamp_limit(limit),
-            offset=offset,
-        )
-    except ApiException as exc:
-        raise _api_error(exc) from None
+    result = await h.runs.aio_list(
+        since=_parse_dt(since, field="since"),
+        until=_parse_dt(until, field="until"),
+        statuses=_parse_statuses(statuses),
+        workflow_ids=workflow_ids,
+        worker_id=worker_id,
+        additional_metadata=additional_metadata,
+        only_tasks=only_tasks,
+        include_payloads=include_payloads,
+        limit=_clamp_limit(limit),
+        offset=offset,
+    )
     return _dump(result)
 
 
@@ -100,10 +95,7 @@ async def get_run(
     ],
 ) -> dict[str, Any]:
     h = get_hatchet()
-    try:
-        result = await h.runs.aio_get(workflow_run_id)
-    except ApiException as exc:
-        raise _api_error(exc) from None
+    result = await h.runs.aio_get(workflow_run_id)
     return _dump_item(result)
 
 
@@ -113,10 +105,7 @@ async def get_run_status(
     ],
 ) -> dict[str, Any]:
     h = get_hatchet()
-    try:
-        status = await h.runs.aio_get_status(workflow_run_id)
-    except ApiException as exc:
-        raise _api_error(exc) from None
+    status = await h.runs.aio_get_status(workflow_run_id)
     return {"workflow_run_id": workflow_run_id, "status": status.value}
 
 
@@ -138,15 +127,12 @@ async def trigger_workflow(
 ) -> dict[str, Any]:
     _require_writable()
     h = get_hatchet()
-    try:
-        result = await h.runs.aio_create(
-            workflow_name=workflow_name,
-            input=input or {},
-            additional_metadata=additional_metadata,
-            priority=priority,
-        )
-    except ApiException as exc:
-        raise _api_error(exc) from None
+    result = await h.runs.aio_create(
+        workflow_name=workflow_name,
+        input=input or {},
+        additional_metadata=additional_metadata,
+        priority=priority,
+    )
     return _dump(result)
 
 
@@ -186,21 +172,18 @@ async def _resolve_and_bulk(
         since_dt = _parse_dt(since, field="since") or (until_dt - timedelta(days=1))
         status_enums = _parse_statuses(statuses)
         metadata_kv = maybe_additional_metadata_to_kv(additional_metadata)
-        try:
-            target_ids = await _rest_call(
-                lambda client, tenant: WorkflowRunsApi(
-                    client
-                ).v1_workflow_run_external_ids_list(
-                    tenant=tenant,
-                    since=since_dt,
-                    until=until_dt,
-                    statuses=status_enums,
-                    workflow_ids=workflow_ids,
-                    additional_metadata=metadata_kv,
-                )
+        target_ids = await _rest_call(
+            lambda client, tenant: WorkflowRunsApi(
+                client
+            ).v1_workflow_run_external_ids_list(
+                tenant=tenant,
+                since=since_dt,
+                until=until_dt,
+                statuses=status_enums,
+                workflow_ids=workflow_ids,
+                additional_metadata=metadata_kv,
             )
-        except ApiException as exc:
-            raise _api_error(exc) from None
+        )
 
     matched = len(target_ids)
     if matched > _BULK_LIMIT:
@@ -235,13 +218,10 @@ async def _resolve_and_bulk(
         }
 
     opts = BulkCancelReplayOpts(ids=target_ids)
-    try:
-        if action == "cancel":
-            await get_hatchet().runs.aio_bulk_cancel(opts)
-        else:
-            await get_hatchet().runs.aio_bulk_replay(opts)
-    except ApiException as exc:
-        raise _api_error(exc) from None
+    if action == "cancel":
+        await get_hatchet().runs.aio_bulk_cancel(opts)
+    else:
+        await get_hatchet().runs.aio_bulk_replay(opts)
     return {
         "action": action,
         "dry_run": False,

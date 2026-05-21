@@ -7,14 +7,16 @@ graph acyclic (``server`` → tools → ``_shared``; ``app`` holds only the app 
 """
 
 import asyncio
+import functools
 import json
+import random
 from collections.abc import Callable
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, TypeVar
 
 from hatchet_sdk.clients.rest.api_client import ApiClient
-from hatchet_sdk.clients.rest.exceptions import ApiException
+from hatchet_sdk.clients.rest.exceptions import ApiException, RestTransportError
 from hatchet_sdk.clients.rest.models.v1_task_status import V1TaskStatus
 from mcp.types import ToolAnnotations
 from pydantic import BaseModel
@@ -179,3 +181,90 @@ def _destructive(*, idempotent: bool) -> ToolAnnotations:
     return ToolAnnotations(
         readOnlyHint=False, destructiveHint=True, idempotentHint=idempotent
     )
+
+
+# * Reliability — retry + per-call deadline
+# Every registered tool goes through `_reliability_wrap`. The 30s deadline is always on; the
+# retry loop runs only when `retry=True` (set by `register_read_tools` always, by
+# `register_mutating_tools` based on `annotations.idempotentHint`). Retryable errors:
+# RestTransportError, 429, 5xx. Everything else surfaces on the first attempt. The retry
+# budget (~7s with jitter) sits inside the deadline so wall-clock per call is capped at 30s.
+_PER_CALL_TIMEOUT_S = 30.0
+_RETRY_BACKOFFS_S: tuple[float, ...] = (1.0, 2.0)
+_BACKOFF_JITTER = 0.25
+_RETRY_AFTER_CAP_S = 10.0
+
+
+def _is_retryable(exc: BaseException) -> bool:
+    """5xx + 429 + transport-level errors retry; 4xx (auth/not-found/conflict) surface immediately."""
+    if isinstance(exc, RestTransportError):
+        return True
+    if isinstance(exc, ApiException):
+        status = exc.status
+        if status is None:
+            return False
+        return status == 429 or 500 <= status <= 599
+    return False
+
+
+def _retry_after_seconds(exc: ApiException) -> float | None:
+    """Pull integer-seconds `Retry-After` from a 429, clamped to 10s. HTTP-date format is ignored."""
+    headers = getattr(exc, "headers", None)
+    if not headers:
+        return None
+    raw: Any = None
+    if hasattr(headers, "get"):
+        raw = headers.get("Retry-After") or headers.get("retry-after")
+    if raw is None:
+        return None
+    try:
+        seconds = float(raw)
+    except (TypeError, ValueError):
+        return None
+    return min(max(seconds, 0.0), _RETRY_AFTER_CAP_S)
+
+
+def _reliability_wrap(fn: Callable[..., Any], *, retry: bool) -> Callable[..., Any]:
+    """Wrap `fn` with a 30s deadline (always) and exponential-backoff retry (only when retry=True).
+
+    Owns the ApiException -> RuntimeError translation that handlers used to do inline, so the
+    retry loop sees the raw SDK exception (with status + headers) and only the final survivor
+    is run through `_api_error` (which redacts + caps the message). `functools.wraps`
+    propagates fn's `__wrapped__`, `__name__`, `__annotations__`, so FastMCP's
+    `inspect.signature(fn, eval_str=True)` introspection sees the original parameters and
+    the generated arg model is byte-identical to wrapping nothing.
+    """
+
+    @functools.wraps(fn)
+    async def wrapper(*args: Any, **kwargs: Any) -> Any:
+        async def _attempts() -> Any:
+            if not retry:
+                return await fn(*args, **kwargs)
+            last: BaseException | None = None
+            for attempt in range(len(_RETRY_BACKOFFS_S) + 1):
+                try:
+                    return await fn(*args, **kwargs)
+                except Exception as exc:
+                    if not _is_retryable(exc):
+                        raise
+                    last = exc
+                    if attempt == len(_RETRY_BACKOFFS_S):
+                        break
+                    base = _RETRY_BACKOFFS_S[attempt]
+                    if isinstance(exc, ApiException) and exc.status == 429:
+                        ra = _retry_after_seconds(exc)
+                        if ra is not None:
+                            base = max(base, ra)
+                    delay = base * random.uniform(
+                        1 - _BACKOFF_JITTER, 1 + _BACKOFF_JITTER
+                    )
+                    await asyncio.sleep(max(0.0, delay))
+            assert last is not None
+            raise last
+
+        try:
+            return await asyncio.wait_for(_attempts(), timeout=_PER_CALL_TIMEOUT_S)
+        except ApiException as exc:
+            raise _api_error(exc) from None
+
+    return wrapper

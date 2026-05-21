@@ -4,7 +4,6 @@ from collections.abc import Callable
 from typing import Annotated, Any
 
 from hatchet_sdk.clients.rest.api.workflow_api import WorkflowApi
-from hatchet_sdk.clients.rest.exceptions import ApiException
 from hatchet_sdk.clients.rest.models.workflow_update_request import (
     WorkflowUpdateRequest,
 )
@@ -12,7 +11,6 @@ from mcp.types import ToolAnnotations
 from pydantic import Field
 
 from hatchet_mcp._shared import (
-    _api_error,
     _clamp_limit,
     _destructive,
     _dump,
@@ -32,12 +30,9 @@ async def list_workflows(
     offset: Annotated[int | None, Field(description="Pagination offset.")] = None,
 ) -> dict[str, Any]:
     h = get_hatchet()
-    try:
-        result = await h.workflows.aio_list(
-            workflow_name=workflow_name, limit=_clamp_limit(limit), offset=offset
-        )
-    except ApiException as exc:
-        raise _api_error(exc) from None
+    result = await h.workflows.aio_list(
+        workflow_name=workflow_name, limit=_clamp_limit(limit), offset=offset
+    )
     return _dump(result)
 
 
@@ -45,10 +40,7 @@ async def get_workflow(
     workflow_id: Annotated[str, Field(description="The workflow ID (UUID).")],
 ) -> dict[str, Any]:
     h = get_hatchet()
-    try:
-        result = await h.workflows.aio_get(workflow_id)
-    except ApiException as exc:
-        raise _api_error(exc) from None
+    result = await h.workflows.aio_get(workflow_id)
     return _dump(result)
 
 
@@ -59,15 +51,12 @@ async def pause_workflow(
 ) -> dict[str, Any]:
     _require_writable()
     # ^ No feature-client method for pausing a workflow; uses the low-level workflow:update (isPaused).
-    try:
-        result = await _rest_call(
-            lambda client, _tenant: WorkflowApi(client).workflow_update(
-                workflow=workflow_id,
-                workflow_update_request=WorkflowUpdateRequest(isPaused=True),
-            )
+    result = await _rest_call(
+        lambda client, _tenant: WorkflowApi(client).workflow_update(
+            workflow=workflow_id,
+            workflow_update_request=WorkflowUpdateRequest(isPaused=True),
         )
-    except ApiException as exc:
-        raise _api_error(exc) from None
+    )
     return _dump(result)
 
 
@@ -77,15 +66,12 @@ async def resume_workflow(
     ],
 ) -> dict[str, Any]:
     _require_writable()
-    try:
-        result = await _rest_call(
-            lambda client, _tenant: WorkflowApi(client).workflow_update(
-                workflow=workflow_id,
-                workflow_update_request=WorkflowUpdateRequest(isPaused=False),
-            )
+    result = await _rest_call(
+        lambda client, _tenant: WorkflowApi(client).workflow_update(
+            workflow=workflow_id,
+            workflow_update_request=WorkflowUpdateRequest(isPaused=False),
         )
-    except ApiException as exc:
-        raise _api_error(exc) from None
+    )
     return _dump(result)
 
 

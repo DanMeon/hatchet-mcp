@@ -4,7 +4,6 @@ from collections.abc import Callable
 from typing import Annotated, Any
 
 from hatchet_sdk.clients.rest.api.event_api import EventApi
-from hatchet_sdk.clients.rest.exceptions import ApiException
 from hatchet_sdk.clients.rest.models.create_event_request import CreateEventRequest
 from hatchet_sdk.clients.rest.models.v1_task_status import V1TaskStatus
 from hatchet_sdk.clients.v1.api_client import maybe_additional_metadata_to_kv
@@ -12,7 +11,6 @@ from mcp.types import ToolAnnotations
 from pydantic import Field
 
 from hatchet_mcp._shared import (
-    _api_error,
     _clamp_limit,
     _destructive,
     _dump,
@@ -61,46 +59,37 @@ async def list_events(
     until_dt = _parse_dt(until, field="until")
     status_enums = _parse_enum_list(statuses, V1TaskStatus, field="status")
     metadata_kv = maybe_additional_metadata_to_kv(additional_metadata)
-    try:
-        result = await _rest_call(
-            lambda client, tenant: EventApi(client).v1_event_list(
-                tenant=tenant,
-                offset=offset,
-                limit=_clamp_limit(limit),
-                keys=keys,
-                since=since_dt,
-                until=until_dt,
-                workflow_ids=workflow_ids,
-                workflow_run_statuses=status_enums,
-                additional_metadata=metadata_kv,
-            )
+    result = await _rest_call(
+        lambda client, tenant: EventApi(client).v1_event_list(
+            tenant=tenant,
+            offset=offset,
+            limit=_clamp_limit(limit),
+            keys=keys,
+            since=since_dt,
+            until=until_dt,
+            workflow_ids=workflow_ids,
+            workflow_run_statuses=status_enums,
+            additional_metadata=metadata_kv,
         )
-    except ApiException as exc:
-        raise _api_error(exc) from None
+    )
     return _dump(result)
 
 
 async def get_event(
     event_id: Annotated[str, Field(description="The event ID (UUID).")],
 ) -> dict[str, Any]:
-    try:
-        result = await _rest_call(
-            lambda client, tenant: EventApi(client).v1_event_get(
-                tenant=tenant, v1_event=event_id
-            )
+    result = await _rest_call(
+        lambda client, tenant: EventApi(client).v1_event_get(
+            tenant=tenant, v1_event=event_id
         )
-    except ApiException as exc:
-        raise _api_error(exc) from None
+    )
     return _dump_item(result)
 
 
 async def list_event_keys() -> dict[str, Any]:
-    try:
-        result = await _rest_call(
-            lambda client, tenant: EventApi(client).v1_event_key_list(tenant=tenant)
-        )
-    except ApiException as exc:
-        raise _api_error(exc) from None
+    result = await _rest_call(
+        lambda client, tenant: EventApi(client).v1_event_key_list(tenant=tenant)
+    )
     return _dump(result)
 
 
@@ -124,21 +113,18 @@ async def push_event(
 ) -> dict[str, Any]:
     _require_writable()
     # ^ Uses the legacy REST event:create (EventApi.event_create) to stay REST-only and avoid the gRPC h.event push client.
-    try:
-        result = await _rest_call(
-            lambda client, tenant: EventApi(client).event_create(
-                tenant=tenant,
-                create_event_request=CreateEventRequest(
-                    key=key,
-                    data=data or {},
-                    additionalMetadata=additional_metadata,
-                    priority=priority,
-                    scope=scope,
-                ),
-            )
+    result = await _rest_call(
+        lambda client, tenant: EventApi(client).event_create(
+            tenant=tenant,
+            create_event_request=CreateEventRequest(
+                key=key,
+                data=data or {},
+                additionalMetadata=additional_metadata,
+                priority=priority,
+                scope=scope,
+            ),
         )
-    except ApiException as exc:
-        raise _api_error(exc) from None
+    )
     return _dump(result)
 
 
