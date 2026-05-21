@@ -17,6 +17,10 @@ READ_ONLY_ENV = "HATCHET_MCP_READ_ONLY"
 _TRUE = frozenset({"1", "true", "yes", "on"})
 _FALSE = frozenset({"0", "false", "no", "off"})
 
+# 16 chars covers the JWT header + the first byte of the payload. False positives are
+# acceptable here — any unrelated match in an error string is still safe to redact.
+_TOKEN_PREFIX_LEN = 16
+
 
 class ConfigError(RuntimeError):
     """Raised at startup when required configuration is missing or invalid."""
@@ -27,6 +31,22 @@ class ServerConfig(BaseModel):
 
     read_only: bool
     server_url_override: str | None
+
+
+def redact(message: str) -> str:
+    """Strip the Hatchet token and its 16-char prefix so neither can leak."""
+    token = os.environ.get(TOKEN_ENV, "").strip()
+    if not token:
+        return message
+
+    needles = {token}
+    if len(token) >= _TOKEN_PREFIX_LEN:
+        needles.add(token[:_TOKEN_PREFIX_LEN])
+
+    for needle in needles:
+        if needle in message:
+            message = message.replace(needle, "***REDACTED***")
+    return message
 
 
 def _parse_bool(raw: str | None, *, default: bool) -> bool:
@@ -40,7 +60,9 @@ def _parse_bool(raw: str | None, *, default: bool) -> bool:
         return False
 
     allowed = sorted(_TRUE | _FALSE)
-    raise ConfigError(f"{READ_ONLY_ENV} must be a boolean ({allowed}); got {raw!r}")
+    raise ConfigError(
+        f"{READ_ONLY_ENV} must be a boolean ({allowed}); got {redact(raw)!r}"
+    )
 
 
 def load_config() -> ServerConfig:
@@ -55,11 +77,3 @@ def load_config() -> ServerConfig:
         read_only=_parse_bool(os.environ.get(READ_ONLY_ENV), default=True),
         server_url_override=(os.environ.get(SERVER_URL_ENV) or "").strip() or None,
     )
-
-
-def redact(message: str) -> str:
-    """Strip the Hatchet token from a string so it can never leak into logs or errors."""
-    token = os.environ.get(TOKEN_ENV, "").strip()
-    if token and token in message:
-        return message.replace(token, "***REDACTED***")
-    return message

@@ -9,6 +9,7 @@ map to verified ``hatchet-sdk`` calls and return the SDK's Pydantic responses se
 JSON (``by_alias=True``, matching the Hatchet REST/dashboard shape).
 """
 
+import logging
 import sys
 
 from mcp.server.fastmcp import FastMCP
@@ -27,6 +28,18 @@ from hatchet_mcp.tools import (
     workflows,
 )
 
+# SDK and transport loggers that would echo Authorization headers (full Bearer token) to
+# stderr when a downstream process sets LOG_LEVEL=DEBUG. Forcing WARNING blocks that leak path.
+_DEPENDENCY_LOGGERS = (
+    "hatchet_sdk",
+    "aiohttp",
+    "aiohttp.client",
+    "httpx",
+    "httpcore",
+    "grpc",
+    "urllib3",
+)
+
 _TOOL_MODULES = (
     workflows,
     runs,
@@ -40,6 +53,12 @@ _TOOL_MODULES = (
 
 READ_TOOLS = [tool for module in _TOOL_MODULES for tool in module.READ_TOOLS]
 MUTATING_TOOLS = [tool for module in _TOOL_MODULES for tool in module.MUTATING_TOOLS]
+
+
+def muzzle_dependency_loggers() -> None:
+    """Force SDK/transport loggers to WARNING so Bearer tokens cannot leak via their debug output."""
+    for logger_name in _DEPENDENCY_LOGGERS:
+        logging.getLogger(logger_name).setLevel(logging.WARNING)
 
 
 def register_read_tools(mcp: FastMCP) -> None:
@@ -59,6 +78,8 @@ def main() -> None:
 
     All diagnostics go to stderr — stdout is the MCP JSON-RPC channel.
     """
+    muzzle_dependency_loggers()
+
     try:
         config = load_config()
         init_hatchet()

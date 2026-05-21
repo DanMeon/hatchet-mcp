@@ -90,6 +90,25 @@ def test_redact_strips_token(monkeypatch):
     assert "***REDACTED***" in out
 
 
+def test_redact_strips_token_prefix(monkeypatch):
+    # Truncated/wrapped log lines often surface only the JWT header prefix; the full-substring
+    # check would miss them, so redact also strips the first 16 chars of the token.
+    monkeypatch.setenv(TOKEN_ENV, "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.body.signature")
+    out = redact("Authorization: Bearer eyJhbGciOiJIUzI1 (truncated)")
+    assert "eyJhbGciOiJIUzI1" not in out
+    assert "***REDACTED***" in out
+
+
 def test_redact_noop_without_token(monkeypatch):
     monkeypatch.delenv(TOKEN_ENV, raising=False)
     assert redact("nothing to hide here") == "nothing to hide here"
+
+
+def test_invalid_read_only_message_redacts_long_token(monkeypatch):
+    # A 16+ char token mis-pasted into HATCHET_MCP_READ_ONLY must not leak via the
+    # ConfigError message that echoes the offending value.
+    monkeypatch.setenv(TOKEN_ENV, "eyJhbGciOiJIUzI1NiJ9.body.signature")
+    monkeypatch.setenv(READ_ONLY_ENV, "eyJhbGciOiJIUzI1NiJ9.body.signature")
+    with pytest.raises(ConfigError) as excinfo:
+        load_config()
+    assert "eyJhbGciOiJIUzI1NiJ9" not in str(excinfo.value)

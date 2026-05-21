@@ -45,6 +45,23 @@ def test_api_error_redacts_token(monkeypatch):
     assert "***REDACTED***" in text
 
 
+def test_api_error_redacts_token_prefix(monkeypatch):
+    # When the body only includes the truncated prefix (e.g. wrapped log line, partial
+    # header echo), the full-substring path misses it — the prefix path must catch it.
+    monkeypatch.setenv(
+        "HATCHET_CLIENT_TOKEN",
+        "eyJhbGciOiJIUzI1NiIs.payload.signature",
+    )
+    exc = ApiException(
+        status=401,
+        reason="Unauthorized",
+        body="Bearer eyJhbGciOiJIUzI1NiIs... rejected by upstream",
+    )
+    text = str(shared._api_error(exc))
+    assert "eyJhbGciOiJIUzI1NiIs" not in text
+    assert "***REDACTED***" in text
+
+
 def test_api_error_includes_status_and_reason(monkeypatch):
     monkeypatch.delenv("HATCHET_CLIENT_TOKEN", raising=False)
     exc = ApiException(status=404, reason="Not Found")
