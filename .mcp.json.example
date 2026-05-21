@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "hatchet": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["hatchet-mcp"],
+      "env": {
+        "HATCHET_CLIENT_TOKEN": "<your-hatchet-api-token-jwt>",
+        "HATCHET_CLIENT_SERVER_URL": "",
+        "HATCHET_MCP_READ_ONLY": "true"
+      }
+    }
+  }
+}

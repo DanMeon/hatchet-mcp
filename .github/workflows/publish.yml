@@ -1,0 +1,50 @@
+name: Publish to PyPI
+
+# Builds and publishes to PyPI via Trusted Publishing (OIDC) when a GitHub Release is
+# published. No PyPI API token is stored in the repo or in CI secrets — PyPI verifies this
+# workflow's short-lived OIDC identity instead. A one-time "pending publisher" must be
+# configured on PyPI before the first release.
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+      - name: Sync deps
+        run: uv sync
+      - name: Lint
+        run: uv run ruff check src tests
+      - name: Format check
+        run: uv run ruff format --check src tests
+      - name: Type check
+        run: uv run pyright
+      - name: Test
+        run: uv run pytest -q
+
+  publish:
+    needs: test
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/hatchet-mcp
+    permissions:
+      id-token: write # required for Trusted Publishing (OIDC); no token needed
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+      - name: Build sdist + wheel
+        run: uv build
+      - name: Validate distribution metadata
+        run: uvx twine check dist/*
+      - name: Publish to PyPI (Trusted Publishing)
+        run: uv publish --trusted-publishing always

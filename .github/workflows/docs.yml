@@ -1,0 +1,49 @@
+name: Docs lint
+
+# Triggers: changes to docs/*.md / lint scripts / hooks. Separate from build and test.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - 'tests/**'
+      - 'scripts/_doc_lint.py'
+      - 'scripts/lint_docs.py'
+      - 'scripts/generate_spec_trace.py'
+      - '.claude/hooks/docs-lint.py'
+      - '.github/workflows/docs.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - 'tests/**'
+      - 'scripts/_doc_lint.py'
+      - 'scripts/lint_docs.py'
+      - 'scripts/generate_spec_trace.py'
+      - '.claude/hooks/docs-lint.py'
+      - '.github/workflows/docs.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  lint:
+    name: Lint docs (frontmatter / pair / supersede / links)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v8.1.0
+        with:
+          python-version: "3.12"
+      # ^ --no-project: skip installing the project itself (lint doesn't import hatchet_mcp).
+      #   --with: install only typer ad-hoc (lightweight).
+      - name: Lint docs
+        run: uv run --no-project --with "typer>=0.12" python scripts/lint_docs.py docs/
+      - name: Verify spec trace report up to date
+        # ^ when tests/ @pytest.mark.spec changes, docs/traces/coverage.md must stay in sync.
+        run: uv run --no-project --with "typer>=0.12" python scripts/generate_spec_trace.py --check
