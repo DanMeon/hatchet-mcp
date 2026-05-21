@@ -25,10 +25,17 @@ until you opt in with `HATCHET_MCP_READ_ONLY=false`.
 > Design background lives in [`docs/init/`](docs/init/). See [`docs/init/mcp-server-design.md`](docs/init/mcp-server-design.md)
 > for the full tool surface and security model.
 
+## Quick start
+
+1. **Get a token.** Visit your Hatchet dashboard → **Settings → API Tokens → Create**. The token is shown only once. (For self-hosted with an internal token URL, note the public REST URL — set it as `HATCHET_CLIENT_SERVER_URL`.)
+2. **Run the server.** `uvx hatchet-mcp` (works with no prior install beyond `uv` itself).
+3. **Set the token.** Either `export HATCHET_CLIENT_TOKEN=<your-token>` in your shell, or put it in your MCP client's `env:` block — see [Use it from an MCP client](#use-it-from-an-mcp-client) for a copy-pasteable `.mcp.json`.
+4. **Ask the LLM.** Try "list my workflows" or "show runs from the last hour". The 24 read tools are available immediately; mutating tools stay hidden until you set `HATCHET_MCP_READ_ONLY=false`.
+
 ## Install & run
 
 ```bash
-# From PyPI (once published)
+# From PyPI
 uvx hatchet-mcp
 
 # Directly from a git checkout, no install
@@ -54,9 +61,6 @@ The repo ships a [`.mcp.json.example`](.mcp.json.example) for project-scoped set
 cp .mcp.json.example .mcp.json
 # then edit .mcp.json → set HATCHET_CLIENT_TOKEN
 ```
-
-Before the package is published to PyPI, run it from git instead — keep `"command": "uvx"` and
-set `"args": ["--from", "git+https://github.com/DanMeon/hatchet-mcp", "hatchet-mcp"]`.
 
 Or register it directly with the CLI:
 
