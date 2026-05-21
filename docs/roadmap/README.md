@@ -16,9 +16,7 @@ Each row is one spec + its paired design research (if any). Status follows [CONV
 
 | Version | Status | Roadmap spec | Design research (ADR) |
 |---|---|---|---|
-| — | — | — | — |
-
-> No active specs yet. Create one with `/new-spec <version> <topic>`.
+| v0.2.0 (reliability) | Draft | [v0.2.0/reliability.md](v0.2.0/reliability.md) | [design/v0.2.0/reliability-research.md](../design/v0.2.0/reliability-research.md) |
 
 ## Unstarted work
 
