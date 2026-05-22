@@ -135,7 +135,8 @@ READ_TOOLS: list[tuple[Callable[..., Any], str, str]] = [
         get_run_timings,
         "get_run_timings",
         "Get the task waterfall timings for a workflow run (queued/started/finished per "
-        "task), optionally limited by tree depth.",
+        "task), optionally limited by tree depth. Also the cheapest way to expand a "
+        "parent run's child task tree in a single call (use depth=1 for direct children).",
     ),
     (
         get_trace,

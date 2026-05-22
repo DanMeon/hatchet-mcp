@@ -7,6 +7,34 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-05-22
+
+### Changed (breaking)
+
+- **`list_runs`** now defaults to a 9-field projection (`minimal_output=True`):
+  `taskExternalId`, `workflowRunExternalId`, `status`, `workflowName`, `startedAt`,
+  `finishedAt`, `errorMessage`, `parentTaskExternalId`, `numSpawnedChildren` —
+  typically ~5-7x smaller per response (a 124 KB / 100-row scan drops to ~20 KB).
+  Set `minimal_output=False` to get every field, or use `get_run` for one run's full
+  record. Follows the GitHub MCP convention of defaulting list tools to a compact
+  shape (`src/hatchet_mcp/tools/runs.py`).
+- **`list_events`** now defaults to `minimal_output=True`, which drops each event's
+  `payload`, `triggeredRuns`, and `additionalMetadata` fields. Set
+  `minimal_output=False` for the full record, or use `get_event` for one event's full
+  payload. Same convention as `list_runs` (`src/hatchet_mcp/tools/events.py`).
+
+Callers that depended on the full row from either tool must now opt in by passing
+`minimal_output=False`. The 500 KB size guard still wraps the minimal-projection
+path so a runaway response cannot bypass it.
+
+### Changed
+
+- **`get_run_timings`** description now explicitly calls out that it is the cheapest way
+  to expand a parent run's child task tree in a single call (use `depth=1` for direct
+  children) — closes a discovery gap that previously forced callers to page through
+  `list_runs` to find children of a known parent
+  (`src/hatchet_mcp/tools/observability.py`).
+
 ## [0.2.1] - 2026-05-22
 
 ### Added
