@@ -19,6 +19,14 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `order_by_field` (`triggerAt` / `createdAt`), and `order_by_direction` (`ASC` / `DESC`)
   (`src/hatchet_mcp/tools/schedules.py`). Invalid `order_by_*` values raise with the
   allowed-values list rather than reaching the SDK.
+- **`list_crons`** now forwards `order_by_field` (`name` / `createdAt`) and
+  `order_by_direction` (`ASC` / `DESC`) (`src/hatchet_mcp/tools/schedules.py`).
+- **`list_events`** now forwards `event_ids` (specific events by UUID) and `scopes`
+  (filter by event scope strings) (`src/hatchet_mcp/tools/events.py`).
+- **`list_rate_limits`** now forwards `order_by_field` (`key` / `value` / `limitValue`)
+  and `order_by_direction` (lowercase `asc` / `desc`, matching the SDK's
+  `RateLimitOrderByDirection` enum — distinct from `WorkflowRunOrderByDirection`'s
+  uppercase) (`src/hatchet_mcp/tools/observability.py`).
 - New shared helper `_parse_enum` for validating a single (str) enum value, mirroring
   `_parse_enum_list` (`src/hatchet_mcp/_shared.py`).
 
