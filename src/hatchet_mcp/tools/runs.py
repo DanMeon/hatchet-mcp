@@ -51,6 +51,20 @@ async def list_runs(
     worker_id: Annotated[
         str | None, Field(description="Only runs handled by this worker ID.")
     ] = None,
+    parent_task_external_id: Annotated[
+        str | None,
+        Field(
+            description="Only child runs of this parent task external ID — use to expand a "
+            "sub-workflow tree from a parent run."
+        ),
+    ] = None,
+    triggering_event_external_id: Annotated[
+        str | None,
+        Field(
+            description="Only runs triggered by this event external ID — use to trace which "
+            "runs an event caused."
+        ),
+    ] = None,
     additional_metadata: Annotated[
         dict[str, str] | None,
         Field(description="Filter by run additional-metadata key/values."),
@@ -80,6 +94,8 @@ async def list_runs(
         statuses=_parse_statuses(statuses),
         workflow_ids=workflow_ids,
         worker_id=worker_id,
+        parent_task_external_id=parent_task_external_id,
+        triggering_event_external_id=triggering_event_external_id,
         additional_metadata=additional_metadata,
         only_tasks=only_tasks,
         include_payloads=include_payloads,
@@ -339,8 +355,9 @@ READ_TOOLS: list[tuple[Callable[..., Any], str, str]] = [
     (
         list_runs,
         "list_runs",
-        "List workflow/task runs filtered by time, status, workflow, worker, or metadata. "
-        "Defaults to the last 24h. Status values are v1: QUEUED/RUNNING/COMPLETED/CANCELLED/FAILED.",
+        "List workflow/task runs filtered by time, status, workflow, worker, parent task, "
+        "triggering event, or metadata. Defaults to the last 24h. "
+        "Status values are v1: QUEUED/RUNNING/COMPLETED/CANCELLED/FAILED.",
     ),
     (
         get_run,
