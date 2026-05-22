@@ -15,6 +15,7 @@ from hatchet_mcp._shared import (
     _destructive,
     _dump,
     _dump_item,
+    _guard_size,
     _parse_dt,
     _parse_enum_list,
     _require_writable,
@@ -61,6 +62,14 @@ async def list_events(
         dict[str, str] | None,
         Field(description="Filter by event additional-metadata key/values."),
     ] = None,
+    minimal_output: Annotated[
+        bool,
+        Field(
+            description="Default true: drop each event's payload, triggeredRuns, and "
+            "additionalMetadata to keep broad scans cheap. Set false for the full "
+            "record, or use get_event for one event's full payload."
+        ),
+    ] = True,
     limit: Annotated[
         int | None, Field(description="Max events to return (default 50, max 100).")
     ] = None,
@@ -85,7 +94,14 @@ async def list_events(
             scopes=scopes,
         )
     )
-    return _dump(result)
+    if not minimal_output:
+        return _dump(result)
+    dumped = result.model_dump(mode="json", by_alias=True)
+    for row in dumped.get("rows", []):
+        row.pop("payload", None)
+        row.pop("triggeredRuns", None)
+        row.pop("additionalMetadata", None)
+    return _guard_size(dumped)
 
 
 async def get_event(
@@ -146,8 +162,11 @@ READ_TOOLS: list[tuple[Callable[..., Any], str, str]] = [
         list_events,
         "list_events",
         "List events ingested by the tenant, filtered by key, time window, associated "
-        "workflow, triggered-run status, specific event IDs, scope, or metadata. Each "
-        "event carries its payload and a summary of the runs it triggered.",
+        "workflow, triggered-run status, specific event IDs, scope, or metadata. By "
+        "default (minimal_output=true) drops the payload, triggeredRuns, and "
+        "additionalMetadata fields per row to keep broad scans cheap; set "
+        "minimal_output=false for the full record, or use get_event for one event's "
+        "full payload.",
     ),
     (
         get_event,

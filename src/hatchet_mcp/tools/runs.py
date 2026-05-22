@@ -19,6 +19,7 @@ from hatchet_mcp._shared import (
     _destructive,
     _dump,
     _dump_item,
+    _guard_size,
     _parse_dt,
     _parse_statuses,
     _require_writable,
@@ -27,6 +28,20 @@ from hatchet_mcp._shared import (
 from hatchet_mcp.client import get_hatchet
 
 _BULK_LIMIT = 500
+
+_RUN_SUMMARY_FIELDS = frozenset(
+    {
+        "taskExternalId",
+        "workflowRunExternalId",
+        "status",
+        "workflowName",
+        "startedAt",
+        "finishedAt",
+        "errorMessage",
+        "parentTaskExternalId",
+        "numSpawnedChildren",
+    }
+)
 
 
 async def list_runs(
@@ -82,6 +97,16 @@ async def list_runs(
             "response small — use get_run for one run's payloads, or set true with a small limit."
         ),
     ] = False,
+    minimal_output: Annotated[
+        bool,
+        Field(
+            description="Default true: return only orientation fields per row "
+            "(taskExternalId, workflowRunExternalId, status, workflowName, startedAt, "
+            "finishedAt, errorMessage, parentTaskExternalId, numSpawnedChildren) — "
+            "typically ~5-7x smaller, and the right default for broad scans. Set "
+            "false to get every field; drill into one run with get_run for full payloads."
+        ),
+    ] = True,
     limit: Annotated[
         int | None, Field(description="Max runs to return (default 50, max 100).")
     ] = None,
@@ -102,7 +127,14 @@ async def list_runs(
         limit=_clamp_limit(limit),
         offset=offset,
     )
-    return _dump(result)
+    if not minimal_output:
+        return _dump(result)
+    dumped = result.model_dump(mode="json", by_alias=True)
+    dumped["rows"] = [
+        {k: v for k, v in row.items() if k in _RUN_SUMMARY_FIELDS}
+        for row in dumped.get("rows", [])
+    ]
+    return _guard_size(dumped)
 
 
 async def get_run(
@@ -357,7 +389,9 @@ READ_TOOLS: list[tuple[Callable[..., Any], str, str]] = [
         "list_runs",
         "List workflow/task runs filtered by time, status, workflow, worker, parent task, "
         "triggering event, or metadata. Defaults to the last 24h. "
-        "Status values are v1: QUEUED/RUNNING/COMPLETED/CANCELLED/FAILED.",
+        "Status values are v1: QUEUED/RUNNING/COMPLETED/CANCELLED/FAILED. "
+        "Returns a compact 9-field projection per row by default (minimal_output=true); "
+        "set minimal_output=false for every field, or use get_run for one run's full record.",
     ),
     (
         get_run,
