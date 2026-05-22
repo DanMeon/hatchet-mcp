@@ -7,6 +7,29 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-05-22
+
+### Added
+
+- **`list_runs`** now forwards two SDK filters that were previously hidden from MCP clients:
+  `parent_task_external_id` (expand a sub-workflow tree from a parent run) and
+  `triggering_event_external_id` (trace which runs an event caused)
+  (`src/hatchet_mcp/tools/runs.py`).
+- **`list_scheduled`** now forwards three SDK filters: `parent_workflow_run_id`,
+  `order_by_field` (`triggerAt` / `createdAt`), and `order_by_direction` (`ASC` / `DESC`)
+  (`src/hatchet_mcp/tools/schedules.py`). Invalid `order_by_*` values raise with the
+  allowed-values list rather than reaching the SDK.
+- **`list_crons`** now forwards `order_by_field` (`name` / `createdAt`) and
+  `order_by_direction` (`ASC` / `DESC`) (`src/hatchet_mcp/tools/schedules.py`).
+- **`list_events`** now forwards `event_ids` (specific events by UUID) and `scopes`
+  (filter by event scope strings) (`src/hatchet_mcp/tools/events.py`).
+- **`list_rate_limits`** now forwards `order_by_field` (`key` / `value` / `limitValue`)
+  and `order_by_direction` (lowercase `asc` / `desc`, matching the SDK's
+  `RateLimitOrderByDirection` enum — distinct from `WorkflowRunOrderByDirection`'s
+  uppercase) (`src/hatchet_mcp/tools/observability.py`).
+- New shared helper `_parse_enum` for validating a single (str) enum value, mirroring
+  `_parse_enum_list` (`src/hatchet_mcp/_shared.py`).
+
 ## [0.2.0] - 2026-05-21
 
 ### Added

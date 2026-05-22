@@ -46,6 +46,17 @@ async def list_events(
             "QUEUED, RUNNING, COMPLETED, CANCELLED, FAILED."
         ),
     ] = None,
+    event_ids: Annotated[
+        list[str] | None,
+        Field(description="Only these specific events by their UUIDs."),
+    ] = None,
+    scopes: Annotated[
+        list[str] | None,
+        Field(
+            description="Filter by event scope strings — used to subset candidate filters "
+            "at evaluation time. Mirrors the scope set on push_event."
+        ),
+    ] = None,
     additional_metadata: Annotated[
         dict[str, str] | None,
         Field(description="Filter by event additional-metadata key/values."),
@@ -69,7 +80,9 @@ async def list_events(
             until=until_dt,
             workflow_ids=workflow_ids,
             workflow_run_statuses=status_enums,
+            event_ids=event_ids,
             additional_metadata=metadata_kv,
+            scopes=scopes,
         )
     )
     return _dump(result)
@@ -133,8 +146,8 @@ READ_TOOLS: list[tuple[Callable[..., Any], str, str]] = [
         list_events,
         "list_events",
         "List events ingested by the tenant, filtered by key, time window, associated "
-        "workflow, triggered-run status, or metadata. Each event carries its payload and "
-        "a summary of the runs it triggered.",
+        "workflow, triggered-run status, specific event IDs, scope, or metadata. Each "
+        "event carries its payload and a summary of the runs it triggered.",
     ),
     (
         get_event,

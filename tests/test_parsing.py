@@ -90,3 +90,25 @@ def test_parse_enum_list_works_with_v1_task_status():
     assert shared._parse_enum_list(["QUEUED"], V1TaskStatus, field="status") == [
         V1TaskStatus.QUEUED
     ]
+
+
+# * _parse_enum (single)
+
+
+@pytest.mark.parametrize("value", [None, "", "   "])
+def test_parse_enum_blank_is_none(value):
+    assert (
+        shared._parse_enum(value, ScheduledRunStatus, field="scheduled status") is None
+    )
+
+
+def test_parse_enum_valid():
+    assert (
+        shared._parse_enum("PENDING", ScheduledRunStatus, field="scheduled status")
+        is ScheduledRunStatus.PENDING
+    )
+
+
+def test_parse_enum_unknown_raises_with_field():
+    with pytest.raises(ValueError, match="scheduled status"):
+        shared._parse_enum("BOGUS", ScheduledRunStatus, field="scheduled status")

@@ -143,6 +143,19 @@ def _parse_enum_list(
     return parsed
 
 
+def _parse_enum(
+    value: str | None, enum_cls: type[_EnumT], *, field: str
+) -> _EnumT | None:
+    """Validate a single string against a (str) enum, raising on unknown."""
+    if value is None or not value.strip():
+        return None
+    try:
+        return enum_cls(value)
+    except ValueError:
+        allowed = [getattr(member, "value", member) for member in enum_cls]
+        raise ValueError(f"Invalid {field} {value!r}. Allowed: {allowed}") from None
+
+
 async def _rest_call(call: Callable[[ApiClient, str], _T]) -> _T:
     """Invoke a low-level (synchronous) REST API method off the event loop.
 
