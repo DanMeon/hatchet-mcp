@@ -4,6 +4,12 @@ from collections.abc import Callable
 from typing import Annotated, Any
 
 from hatchet_sdk.clients.rest.models.scheduled_run_status import ScheduledRunStatus
+from hatchet_sdk.clients.rest.models.scheduled_workflows_order_by_field import (
+    ScheduledWorkflowsOrderByField,
+)
+from hatchet_sdk.clients.rest.models.workflow_run_order_by_direction import (
+    WorkflowRunOrderByDirection,
+)
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
@@ -12,6 +18,7 @@ from hatchet_mcp._shared import (
     _destructive,
     _dump,
     _parse_dt,
+    _parse_enum,
     _parse_enum_list,
     _require_writable,
 )
@@ -62,6 +69,13 @@ async def list_scheduled(
     workflow_id: Annotated[
         str | None, Field(description="Filter by the target workflow ID.")
     ] = None,
+    parent_workflow_run_id: Annotated[
+        str | None,
+        Field(
+            description="Only scheduled runs whose parent workflow run is this ID — use to "
+            "find one-off runs spawned by a specific parent run."
+        ),
+    ] = None,
     statuses: Annotated[
         list[str] | None,
         Field(
@@ -73,6 +87,14 @@ async def list_scheduled(
         dict[str, str] | None,
         Field(description="Filter by additional-metadata key/values."),
     ] = None,
+    order_by_field: Annotated[
+        str | None,
+        Field(description="Field to order by: triggerAt or createdAt."),
+    ] = None,
+    order_by_direction: Annotated[
+        str | None,
+        Field(description="Order direction: ASC or DESC."),
+    ] = None,
     limit: Annotated[
         int | None,
         Field(description="Max scheduled runs to return (default 50, max 100)."),
@@ -83,12 +105,21 @@ async def list_scheduled(
     status_enums = _parse_enum_list(
         statuses, ScheduledRunStatus, field="scheduled status"
     )
+    order_field = _parse_enum(
+        order_by_field, ScheduledWorkflowsOrderByField, field="order_by_field"
+    )
+    order_direction = _parse_enum(
+        order_by_direction, WorkflowRunOrderByDirection, field="order_by_direction"
+    )
     result = await h.scheduled.aio_list(
         offset=offset,
         limit=_clamp_limit(limit),
         workflow_id=workflow_id,
+        parent_workflow_run_id=parent_workflow_run_id,
         statuses=status_enums,
         additional_metadata=additional_metadata,
+        order_by_field=order_field,
+        order_by_direction=order_direction,
     )
     return _dump(result)
 
@@ -223,9 +254,10 @@ READ_TOOLS: list[tuple[Callable[..., Any], str, str]] = [
     (
         list_scheduled,
         "list_scheduled",
-        "List scheduled (one-off, future-dated) workflow runs, with status/workflow "
-        "filters and pagination. Status values are ScheduledRunStatus: PENDING, RUNNING, "
-        "SUCCEEDED, FAILED, CANCELLED, QUEUED, SCHEDULED.",
+        "List scheduled (one-off, future-dated) workflow runs, with status/workflow/parent "
+        "filters, optional ordering (triggerAt/createdAt ASC/DESC), and pagination. "
+        "Status values are ScheduledRunStatus: PENDING, RUNNING, SUCCEEDED, FAILED, "
+        "CANCELLED, QUEUED, SCHEDULED.",
     ),
 ]
 
