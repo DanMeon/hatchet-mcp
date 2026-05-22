@@ -5,10 +5,16 @@ from typing import Annotated, Any
 
 from hatchet_sdk.clients.rest.api.observability_api import ObservabilityApi
 from hatchet_sdk.clients.rest.api.workflow_runs_api import WorkflowRunsApi
+from hatchet_sdk.clients.rest.models.rate_limit_order_by_direction import (
+    RateLimitOrderByDirection,
+)
+from hatchet_sdk.clients.rest.models.rate_limit_order_by_field import (
+    RateLimitOrderByField,
+)
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
-from hatchet_mcp._shared import _clamp_limit, _dump, _parse_dt, _rest_call
+from hatchet_mcp._shared import _clamp_limit, _dump, _parse_dt, _parse_enum, _rest_call
 from hatchet_mcp.client import get_hatchet
 
 
@@ -81,6 +87,14 @@ async def list_rate_limits(
     search: Annotated[
         str | None, Field(description="Filter rate limits by key (substring search).")
     ] = None,
+    order_by_field: Annotated[
+        str | None,
+        Field(description="Field to order by: key, value, or limitValue."),
+    ] = None,
+    order_by_direction: Annotated[
+        str | None,
+        Field(description="Order direction: asc or desc (lowercase)."),
+    ] = None,
     limit: Annotated[
         int | None,
         Field(description="Max rate limits to return (default 50, max 100)."),
@@ -88,8 +102,18 @@ async def list_rate_limits(
     offset: Annotated[int | None, Field(description="Pagination offset.")] = None,
 ) -> dict[str, Any]:
     h = get_hatchet()
+    order_field = _parse_enum(
+        order_by_field, RateLimitOrderByField, field="order_by_field"
+    )
+    order_direction = _parse_enum(
+        order_by_direction, RateLimitOrderByDirection, field="order_by_direction"
+    )
     result = await h.rate_limits.aio_list(
-        offset=offset, limit=_clamp_limit(limit), search=search
+        offset=offset,
+        limit=_clamp_limit(limit),
+        search=search,
+        order_by_field=order_field,
+        order_by_direction=order_direction,
     )
     return _dump(result)
 
@@ -123,7 +147,7 @@ READ_TOOLS: list[tuple[Callable[..., Any], str, str]] = [
         list_rate_limits,
         "list_rate_limits",
         "List rate limits configured in the tenant with current consumption, limit value, "
-        "window, and last refill time.",
+        "window, and last refill time. Supports ordering by key/value/limitValue asc/desc.",
     ),
 ]
 

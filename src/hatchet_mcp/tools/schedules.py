@@ -3,6 +3,9 @@
 from collections.abc import Callable
 from typing import Annotated, Any
 
+from hatchet_sdk.clients.rest.models.cron_workflows_order_by_field import (
+    CronWorkflowsOrderByField,
+)
 from hatchet_sdk.clients.rest.models.scheduled_run_status import ScheduledRunStatus
 from hatchet_sdk.clients.rest.models.scheduled_workflows_order_by_field import (
     ScheduledWorkflowsOrderByField,
@@ -39,6 +42,14 @@ async def list_crons(
         dict[str, str] | None,
         Field(description="Filter by cron additional-metadata key/values."),
     ] = None,
+    order_by_field: Annotated[
+        str | None,
+        Field(description="Field to order by: name or createdAt."),
+    ] = None,
+    order_by_direction: Annotated[
+        str | None,
+        Field(description="Order direction: ASC or DESC."),
+    ] = None,
     limit: Annotated[
         int | None,
         Field(description="Max cron triggers to return (default 50, max 100)."),
@@ -46,11 +57,19 @@ async def list_crons(
     offset: Annotated[int | None, Field(description="Pagination offset.")] = None,
 ) -> dict[str, Any]:
     h = get_hatchet()
+    order_field = _parse_enum(
+        order_by_field, CronWorkflowsOrderByField, field="order_by_field"
+    )
+    order_direction = _parse_enum(
+        order_by_direction, WorkflowRunOrderByDirection, field="order_by_direction"
+    )
     result = await h.cron.aio_list(
         offset=offset,
         limit=_clamp_limit(limit),
         workflow_id=workflow_id,
         additional_metadata=additional_metadata,
+        order_by_field=order_field,
+        order_by_direction=order_direction,
         workflow_name=workflow_name,
         cron_name=cron_name,
     )
@@ -244,7 +263,7 @@ READ_TOOLS: list[tuple[Callable[..., Any], str, str]] = [
         list_crons,
         "list_crons",
         "List cron triggers in the tenant (schedule expression, target workflow, enabled "
-        "state), with optional filters and pagination.",
+        "state), with optional filters, ordering (name/createdAt ASC/DESC), and pagination.",
     ),
     (
         get_cron,
