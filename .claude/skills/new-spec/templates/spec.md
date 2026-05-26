@@ -1,7 +1,7 @@
 ---
 status: Draft
 description: "<version> — <one-line summary, 50-150 chars, inline identifiers in single quotes>"
-target: <version>
+version: <version>
 last_updated: <YYYY-MM-DD>
 ---
 

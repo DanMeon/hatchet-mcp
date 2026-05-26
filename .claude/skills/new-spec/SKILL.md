@@ -13,7 +13,7 @@ Given `<version>` (e.g. `v0.2.0`) and `<topic>` (e.g. `mutating-tool-gate`), cre
 
 ## Outputs
 
-1. `docs/roadmap/<version>/<topic>.md` — the spec body (frontmatter `status: Draft`, `target: <version>`)
+1. `docs/roadmap/<version>/<topic>.md` — the spec body (frontmatter `status: Draft`, `version: <version>`)
 2. `docs/design/<version>/<topic>-research.md` — the paired ADR (same frontmatter)
 3. `docs/roadmap/README.md` — append a row to the active spec index table
 
@@ -64,7 +64,7 @@ When this skill is invoked, execute the following steps in order:
 
 This section is a quick reference only — the authoritative SSOT is `docs/CONVENTIONS.md`. If a re-quoted rule here drifts from the SSOT, the SSOT wins.
 
-- **Frontmatter schema** (§ Status Metadata): `status` enum / `target` SemVer (when Draft) / `last_updated` `YYYY-MM-DD` / description quoting (double quotes + single quotes for inline identifiers)
+- **Frontmatter schema** (§ Status Metadata): `status` enum / `version` SemVer (required for Draft/GA/Superseded) / `released` `YYYY-MM-DD` (required for GA/Superseded) / `last_updated` `YYYY-MM-DD` / description quoting (double quotes + single quotes for inline identifiers)
 - **Body structure SSOT** (§ Spec / ADR Body Structure): the step 4 / 5 skeletons are *structure* only; the *content rules* are owned by the CONVENTIONS §
 - **Info routing** (§ Section Role Separation): details go in Decisions table cells not the intro, option comparison goes in ADR §N four subsections
 - **Cross-link direction** (§ Cross-Link Direction Rules): only the pair may link spec ↔ spec directly. Other spec ↔ spec direct links are forbidden — route through README
@@ -74,4 +74,4 @@ This section is a quick reference only — the authoritative SSOT is `docs/CONVE
 
 - The step 4 / 5 skeletons are *structural* — actual decisions / acceptance criteria / non-goals / decision matrix entries must be filled per CONVENTIONS § Spec / ADR Body Structure (not by mimicking recent specs)
 - This skill automates **structural consistency** (frontmatter / pair / index / skeleton, steps 1–7) and **delegates independent review** (step 8) — but content judgment, accept/reject of reviewer findings, and any fix application remain the user's call. The reviewer's false-positive rate is non-zero; never blindly accept.
-- The auto-spawned review (step 8) is intentional for *new spec* creation (high-stakes, low-frequency, Frozen-after-GA). Other skills (commit-message / docstring-edit / etc.) should NOT copy this pattern by default — the verifier-spawn cost is justified only when the miss-cost outweighs the invocation overhead.
+- The auto-spawned review (step 8) is intentional for *new spec* creation (high-stakes, low-frequency, immutable-after-GA). Other skills (commit-message / docstring-edit / etc.) should NOT copy this pattern by default — the verifier-spawn cost is justified only when the miss-cost outweighs the invocation overhead.

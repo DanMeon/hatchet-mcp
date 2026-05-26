@@ -1,7 +1,8 @@
 ---
-status: Frozen
+status: GA
 description: "v0.3.0 — +10 read + 4 mutating tools ('webhooks'/'meta' domains), HTTP pool reuse, typed errors, request-id logs, resource reliability fix, 'get_run_status' camelCase"
-ga: v0.3.0
+version: v0.3.0
+released: 2026-05-26
 last_updated: 2026-05-26
 ---
 

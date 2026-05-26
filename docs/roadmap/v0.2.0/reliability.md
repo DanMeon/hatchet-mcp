@@ -1,7 +1,8 @@
 ---
-status: Frozen
+status: GA
 description: "v0.2.0 — idempotent retry + 30s deadline + structured stderr logs + 'get_server_info' diagnostics tool"
-ga: v0.2.0
+version: v0.2.0
+released: 2026-05-21
 last_updated: 2026-05-21
 ---
 

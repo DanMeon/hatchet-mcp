@@ -4,27 +4,24 @@ and scripts/lint_docs.py (whole-repo scan).
 Enforces CONVENTIONS.md policy. Rules:
 
 1. **Frontmatter (YAML)** — every spec except Living
-   - status enum: Active / Draft / Frozen / Superseded
+   - status enum: Active / Draft / GA / Superseded
    - last_updated: YYYY-MM-DD (required)
    - description: required (non-empty string)
-   - status:Active → forbids both ga / target
-   - status:Draft → requires target, forbids ga
-   - status:Frozen → requires ga (except: meta-level docs/implementation/<topic>.md /
-     resolved docs/upstream/<topic>.md / pre-GA stage log)
-   - status:Frozen + target allowed — only for a pre-GA stage log under
-     `docs/implementation/vX.Y.Z/...` (CONVENTIONS § Implementation Log Structure). The
-     body is immutable as written, but the release label is withheld until the parent
-     version GAs — the editorial vs release dimension split of Rust RFC / PEP / ADR
-   - status:Superseded → requires ga + superseded_by
-   - ga ↔ target mutex (except the Frozen pre-GA stage case)
-   - ga / target SemVer (vX.Y.Z)
+   - status:Active → forbids version + released
+   - status:Draft → requires version, forbids released
+   - status:GA → requires released; requires version (except: meta-level
+     docs/implementation/<topic>.md / resolved docs/upstream/<topic>.md — both
+     are cross-version, so version is N/A but released is the write date)
+   - status:Superseded → requires version + released + superseded_by
+   - version / SemVer (vX.Y.Z), released / YYYY-MM-DD
 2. **Supersede chain integrity** — the file pointed to by superseded_by exists +
    its supersedes back-references this file
 3. **Filename kebab-case** — ALL-CAPS (README / CONVENTIONS, etc.) is exempt
 4. **vX.Y.Z directory SemVer** — directories starting with v must be exact SemVer
 5. **<topic>.md ↔ <topic>-research.md pair** — roadmap ↔ design coexist
 6. **same-version spec ↔ spec direct link** — only the pair is exempt
-7. **broken .md link** — relative path points to a real file
+7. **broken .md link** — relative path points to a real file that git would also see
+   on a fresh CI checkout (tracked + untracked-not-ignored)
 
 docs/init/ (flat docs from before the spec system) is exempt — skipped by lint.
 """
@@ -41,7 +38,7 @@ LIVING_FILES = {
     "docs/traces/coverage.md",
     "docs/upstream/README.md",
 }
-STATUS_ENUM = {"Active", "Draft", "Frozen", "Superseded"}
+STATUS_ENUM = {"Active", "Draft", "GA", "Superseded"}
 
 
 # * frontmatter parser — flat key:value only (no multiline / nesting)
@@ -109,58 +106,61 @@ def validate_frontmatter(rel_str: str, meta: dict[str, str], repo: Path) -> list
     if not meta.get("description", "").strip():
         errors.append("frontmatter: 'description' is required (non-empty string)")
 
-    has_ga = "ga" in meta
-    has_target = "target" in meta
+    has_version = "version" in meta
+    has_released = "released" in meta
 
     if status == "Active":
-        if has_ga or has_target:
-            errors.append("frontmatter: status:Active forbids 'ga' and 'target'")
+        if has_version:
+            errors.append("frontmatter: status:Active forbids 'version'")
+        if has_released:
+            errors.append("frontmatter: status:Active forbids 'released'")
     elif status == "Draft":
-        if not has_target:
-            errors.append("frontmatter: status:Draft requires 'target'")
-        if has_ga:
-            errors.append("frontmatter: status:Draft forbids 'ga' (use 'target')")
-    elif status == "Frozen":
-        # ^ exempt: meta-level (outside vX.Y.Z) implementation, resolved upstream
+        if not has_version:
+            errors.append("frontmatter: status:Draft requires 'version'")
+        if has_released:
+            errors.append(
+                "frontmatter: status:Draft forbids 'released' (added on GA transition)"
+            )
+    elif status == "GA":
+        # ^ Two GA documents legitimately omit 'version' because they are not tied
+        #   to a single release: meta-level implementation logs (cross-version work
+        #   like docs-system overhauls) and resolved upstream docs (drafts that were
+        #   eventually submitted to an external repo). Both still carry 'released'.
         is_meta_level = rel_str.startswith("docs/implementation/") and not re.match(
             r"docs/implementation/v\d+\.\d+\.\d+/", rel_str
         )
         is_upstream_resolved = rel_str.startswith("docs/upstream/")
-        # ^ exempt: pre-GA stage log — CONVENTIONS § Implementation Log Structure. Same
-        #   editorial vs release dimension split as Rust RFC / PEP / ADR. The stage body
-        #   is immutable as written (= Frozen) but the ga label is withheld until the
-        #   parent version GAs — expressed as target in that window. Bulk target → ga at GA.
-        is_pre_ga_stage = (
-            re.match(r"docs/implementation/v\d+\.\d+\.\d+/", rel_str) is not None
-            and has_target
-            and not has_ga
-        )
-        if not has_ga:
-            if not (is_meta_level or is_upstream_resolved or is_pre_ga_stage):
-                errors.append(
-                    "frontmatter: status:Frozen requires 'ga' "
-                    "(except meta-level docs/implementation/<topic>.md, "
-                    "docs/upstream/<topic>.md, and pre-GA stage log)"
-                )
-        if has_target and not is_pre_ga_stage:
-            errors.append("frontmatter: status:Frozen forbids 'target'")
+        if not has_version and not (is_meta_level or is_upstream_resolved):
+            errors.append(
+                "frontmatter: status:GA requires 'version' "
+                "(except meta-level docs/implementation/<topic>.md "
+                "and docs/upstream/<topic>.md)"
+            )
+        if not has_released:
+            errors.append("frontmatter: status:GA requires 'released'")
     elif status == "Superseded":
-        if not has_ga:
-            errors.append("frontmatter: status:Superseded requires 'ga' (preserved)")
-        if has_target:
-            errors.append("frontmatter: status:Superseded forbids 'target'")
+        if not has_version:
+            errors.append(
+                "frontmatter: status:Superseded requires 'version' (preserved)"
+            )
+        if not has_released:
+            errors.append(
+                "frontmatter: status:Superseded requires 'released' (preserved)"
+            )
         if "superseded_by" not in meta:
             errors.append("frontmatter: status:Superseded requires 'superseded_by'")
 
-    if has_ga and has_target:
-        errors.append("frontmatter: 'ga' and 'target' are mutually exclusive")
+    version_val = meta.get("version", "")
+    if version_val and not re.fullmatch(r"v\d+\.\d+\.\d+", version_val):
+        errors.append(
+            f"frontmatter: 'version' must be SemVer 'vX.Y.Z' (got {version_val!r})"
+        )
 
-    for field in ("ga", "target"):
-        val = meta.get(field, "")
-        if val and not re.fullmatch(r"v\d+\.\d+\.\d+", val):
-            errors.append(
-                f"frontmatter: {field!r} must be SemVer 'vX.Y.Z' (got {val!r})"
-            )
+    released_val = meta.get("released", "")
+    if released_val and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", released_val):
+        errors.append(
+            f"frontmatter: 'released' must be YYYY-MM-DD (got {released_val!r})"
+        )
 
     errors.extend(_validate_supersede_chain(rel_str, meta, repo))
     return errors
@@ -360,8 +360,9 @@ def lint_file(rel_str: str, repo: Path) -> list[str]:
         if meta is None:
             errors.append(
                 "missing YAML frontmatter — add "
-                "'---\\nstatus: <Active|Draft|Frozen|Superseded>\\n"
-                "[ga|target]: vX.Y.Z\\nlast_updated: YYYY-MM-DD\\n---' "
+                "'---\\nstatus: <Active|Draft|GA|Superseded>\\n"
+                "version: vX.Y.Z\\nreleased: YYYY-MM-DD\\n"
+                "last_updated: YYYY-MM-DD\\n---' "
                 "(CONVENTIONS § Status Metadata)"
             )
         else:

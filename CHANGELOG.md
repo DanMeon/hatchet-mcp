@@ -7,6 +7,17 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Docs
+
+- **Frontmatter schema v2** — collapse the lifecycle-rename pair `target` (Draft)
+  ↔ `ga` (Frozen) into a single permanent `version:` key, rename `status: Frozen`
+  to `status: GA`, and add `released: YYYY-MM-DD` so the GA date is a first-class
+  fact. The `pre-GA stage log` lint exemption is no longer needed and was removed.
+  Bodies of the 4 existing GA spec/ADR files are unchanged — pure-frontmatter
+  bulk migration under the `GA exemption — non-semantic schema migration` rule.
+  Rationale and decision matrix:
+  [docs/implementation/frontmatter-schema-v2.md](docs/implementation/frontmatter-schema-v2.md).
+
 ## [0.3.0] - 2026-05-26
 
 ### Added

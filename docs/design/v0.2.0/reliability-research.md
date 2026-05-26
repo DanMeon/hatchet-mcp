@@ -1,7 +1,8 @@
 ---
-status: Frozen
+status: GA
 description: "v0.2.0 reliability ADR — 5 decisions: retry boundary, per-call deadline, log format, diagnostics surface, idempotency gate"
-ga: v0.2.0
+version: v0.2.0
+released: 2026-05-21
 last_updated: 2026-05-21
 ---
 
