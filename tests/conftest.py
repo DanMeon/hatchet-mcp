@@ -12,7 +12,7 @@ import hatchet_mcp.app as app
 import hatchet_mcp.server as server
 from hatchet_mcp import prompts, resources
 
-# Register the always-on surface (25 read tools + resources + prompts) once for the session.
+# Register the always-on surface (read tools + resources + prompts) once for the session.
 server.register_read_tools(app.mcp)
 resources.register(app.mcp)
 prompts.register(app.mcp)

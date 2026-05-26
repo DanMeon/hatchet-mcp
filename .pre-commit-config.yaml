@@ -21,3 +21,22 @@ repos:
         language: system
         pass_filenames: false
         types: [python]
+
+      # ^ mirrors the CI Docs lint job (.github/workflows/docs.yml) so
+      #   doc-policy violations are caught at commit time instead of after push.
+      #   `_doc_lint.py` resolves link targets via `git ls-files --cached --others
+      #   --exclude-standard`, so a markdown link to a gitignored file (CLAUDE.md /
+      #   AGENTS.md / etc.) fails identically locally and on CI.
+      - id: lint-docs
+        name: lint docs (frontmatter / pair / supersede / links)
+        entry: uv run --no-project --with "typer>=0.12" python scripts/lint_docs.py docs/
+        language: system
+        pass_filenames: false
+        files: '^(docs/.*\.md|scripts/_doc_lint\.py|scripts/lint_docs\.py|\.claude/hooks/docs-lint\.py)$'
+
+      - id: spec-trace-check
+        name: spec trace up-to-date (tests/spec markers ↔ docs/traces/coverage.md)
+        entry: uv run --no-project --with "typer>=0.12" python scripts/generate_spec_trace.py --check
+        language: system
+        pass_filenames: false
+        files: '^(tests/.*\.py|scripts/generate_spec_trace\.py)$'

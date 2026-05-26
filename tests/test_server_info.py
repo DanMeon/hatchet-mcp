@@ -69,8 +69,9 @@ def test_get_server_info_registered_as_read_tool() -> None:
 
     names = {name for _, name, _ in server.READ_TOOLS}
     assert "get_server_info" in names
-    # Spec body §Decision 4 fixes the count post-this-spec at 25.
-    assert len(server.READ_TOOLS) == 25
+    # No hard-coded count — v0.4.0 added new domains (webhooks, meta) and read tools.
+    # The catalog uniqueness check in test_gating guards against duplicate registration.
+    assert len(names) == len(server.READ_TOOLS)
 
 
 # * AC-8 — resource and tool return byte-identical JSON

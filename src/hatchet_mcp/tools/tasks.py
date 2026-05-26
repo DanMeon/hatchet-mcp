@@ -12,6 +12,7 @@ from hatchet_mcp._shared import (
     _destructive,
     _dump,
     _dump_item,
+    _guard_size,
     _parse_dt,
     _require_writable,
     _rest_call,
@@ -68,6 +69,26 @@ async def list_task_events(
     return _dump(result)
 
 
+async def list_dag_tasks(
+    dag_ids: Annotated[
+        list[str],
+        Field(
+            description="One or more DAG (workflow-run) external IDs (UUIDs) to flatten "
+            "into their constituent tasks."
+        ),
+    ],
+) -> dict[str, Any]:
+    result = await _rest_call(
+        lambda client, tenant: TaskApi(client).v1_dag_list_tasks(
+            dag_ids=dag_ids, tenant=tenant
+        )
+    )
+    # ^ SDK returns List[V1DagChildren]; serialize each Pydantic model by hand because _dump
+    # expects a single BaseModel, then wrap in a top-level key and guard the size.
+    rows = [item.model_dump(mode="json", by_alias=True) for item in result]
+    return _guard_size({"rows": rows})
+
+
 async def restore_task(
     task_id: Annotated[
         str,
@@ -97,6 +118,13 @@ READ_TOOLS: list[tuple[Callable[..., Any], str, str]] = [
         "list_task_events",
         "List the orchestration event timeline for a single task run (state transitions "
         "like scheduled, started, retried, reassigned, completed/failed, with reasons).",
+    ),
+    (
+        list_dag_tasks,
+        "list_dag_tasks",
+        "List the constituent tasks of one or more DAG (workflow-run) external IDs as a "
+        "flat list. Complements get_run (which returns the nested task tree) when you want "
+        "to iterate over every leaf task without traversing the tree.",
     ),
 ]
 

@@ -30,6 +30,8 @@ docs/init/ (flat docs from before the spec system) is exempt — skipped by lint
 """
 
 import re
+import subprocess
+from functools import cache
 from pathlib import Path
 
 # * Policy constants
@@ -293,9 +295,32 @@ def validate_cross_link(rel_str: str, text: str) -> list[str]:
     return errors
 
 
+@cache
+def _git_visible_paths(repo: Path) -> frozenset[Path]:
+    """Resolved absolute paths git would surface on a fresh CI checkout.
+
+    ``git ls-files --cached --others --exclude-standard`` lists tracked files plus
+    untracked-but-not-gitignored files — the exact set a CI runner sees after
+    ``actions/checkout``. ``.gitignored`` files like CLAUDE.md / AGENTS.md are excluded,
+    so a markdown link to a local-only file is caught here instead of going green
+    locally and red on CI. Returns an empty set outside a git repo.
+    """
+    try:
+        out = subprocess.check_output(
+            ["git", "ls-files", "--cached", "--others", "--exclude-standard"],
+            cwd=repo,
+            text=True,
+            stderr=subprocess.DEVNULL,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return frozenset()
+    return frozenset((repo / line).resolve() for line in out.splitlines() if line)
+
+
 # * Rule 7: broken .md link
 def validate_broken_link(rel_str: str, text: str, repo: Path) -> list[str]:
     target_dir = (repo / rel_str).parent
+    visible = _git_visible_paths(repo)
     errors: list[str] = []
     for link in re.findall(r"\]\(([^)]+\.md)[^)]*\)", _strip_code(text)):
         link_target = link.split("#")[0].split("?")[0]
@@ -309,6 +334,12 @@ def validate_broken_link(rel_str: str, text: str, repo: Path) -> list[str]:
             continue
         if not resolved.exists():
             errors.append(f"broken .md link {link!r} (resolved: {resolved})")
+        elif visible and resolved not in visible:
+            # ^ file exists locally but is .gitignored — CI checkout would not see it
+            errors.append(
+                f"broken .md link {link!r} (resolved: {resolved} is gitignored — "
+                f"would not exist on CI checkout)"
+            )
     return errors
 
 

@@ -1,4 +1,9 @@
-"""Read-only gate: 25 read tools always; 17 mutating only after registration; handlers refuse in read-only."""
+"""Read-only gate: read tools always; mutating only after registration; handlers refuse in read-only.
+
+Counts are derived from the catalogs themselves (not hard-coded) so adding a tool in a
+follow-up doesn't ripple into churn here; the catalog uniqueness check guards against
+accidentally registering the same tool twice.
+"""
 
 import pytest
 from mcp.types import ToolAnnotations
@@ -10,10 +15,16 @@ import hatchet_mcp.server as server
 # (handler name, minimal valid kwargs) for every mutating tool — kept in sync with MUTATING_TOOLS.
 _MUTATING_CALLS = [
     ("trigger_workflow", {"workflow_name": "wf"}),
+    ("cancel_run", {"run_id": "r1"}),
+    ("replay_run", {"run_id": "r1"}),
     ("cancel_runs", {"run_ids": ["r1"]}),
     ("replay_runs", {"run_ids": ["r1"]}),
     ("restore_task", {"task_id": "t1"}),
     ("push_event", {"key": "user:created"}),
+    (
+        "replay_events",
+        {"event_ids": ["00000000-0000-0000-0000-000000000001"]},
+    ),
     ("pause_workflow", {"workflow_id": "wf1"}),
     ("resume_workflow", {"workflow_id": "wf1"}),
     ("pause_worker", {"worker_id": "wk1"}),
@@ -23,12 +34,15 @@ _MUTATING_CALLS = [
     ("create_scheduled", {"workflow_name": "wf", "trigger_at": "2026-05-21T09:00:00Z"}),
     ("delete_scheduled", {"scheduled_id": "s1"}),
     ("reschedule", {"scheduled_id": "s1", "trigger_at": "2026-05-21T09:00:00Z"}),
+    ("bulk_delete_scheduled", {"scheduled_ids": ["s1"]}),
     ("create_filter", {"workflow_id": "wf1", "expression": "true", "scope": "s"}),
     ("update_filter", {"filter_id": "f1"}),
     ("delete_filter", {"filter_id": "f1"}),
 ]
 
 _FN_BY_NAME = {name: fn for fn, name, _, _ in server.MUTATING_TOOLS}
+_READ_TOOL_COUNT = len(server.READ_TOOLS)
+_MUTATING_TOOL_COUNT = len(server.MUTATING_TOOLS)
 
 
 def _tool_names():
@@ -39,35 +53,34 @@ def _mutating_names():
     return {name for _, name, _, _ in server.MUTATING_TOOLS}
 
 
-def test_read_only_registers_exactly_25(server_module):
+def test_read_only_registers_only_read_tools(server_module):
     names = _tool_names()
-    assert len(names) == 25
+    assert len(names) == _READ_TOOL_COUNT
     assert names.isdisjoint(_mutating_names())
 
 
-def test_read_write_registers_all_42(server_module):
+def test_read_write_registers_read_plus_mutating(server_module):
     server.register_mutating_tools(app.mcp)
     names = _tool_names()
-    assert len(names) == 42
+    assert len(names) == _READ_TOOL_COUNT + _MUTATING_TOOL_COUNT
     assert _mutating_names().issubset(names)
 
 
-def test_mutating_catalog_has_17_unique():
+def test_mutating_catalog_names_are_unique():
     names = [name for _, name, _, _ in server.MUTATING_TOOLS]
-    assert len(names) == 17
-    assert len(set(names)) == 17
+    assert len(names) == len(set(names))
 
 
 def test_register_marks_every_mutating_tool_destructive(server_module, monkeypatch):
     captured: list[tuple[str, ToolAnnotations]] = []
 
-    def fake_add_tool(fn, name, description, annotations):
+    def fake_add_tool(fn, name, title, description, annotations):
         captured.append((name, annotations))
 
     monkeypatch.setattr(app.mcp, "add_tool", fake_add_tool)
     server.register_mutating_tools(app.mcp)
 
-    assert len(captured) == 17
+    assert len(captured) == _MUTATING_TOOL_COUNT
     for _name, ann in captured:
         assert ann.readOnlyHint is False
         assert ann.destructiveHint is True

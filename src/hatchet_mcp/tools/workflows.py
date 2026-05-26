@@ -1,9 +1,10 @@
-"""Workflow definitions: list/get, plus pause/resume (mutating, via the low-level workflow:update)."""
+"""Workflow definitions: list/get/version/metrics (read), plus pause/resume (mutating)."""
 
 from collections.abc import Callable
 from typing import Annotated, Any
 
 from hatchet_sdk.clients.rest.api.workflow_api import WorkflowApi
+from hatchet_sdk.clients.rest.models.workflow_run_status import WorkflowRunStatus
 from hatchet_sdk.clients.rest.models.workflow_update_request import (
     WorkflowUpdateRequest,
 )
@@ -14,6 +15,7 @@ from hatchet_mcp._shared import (
     _clamp_limit,
     _destructive,
     _dump,
+    _parse_enum,
     _require_writable,
     _rest_call,
 )
@@ -41,6 +43,43 @@ async def get_workflow(
 ) -> dict[str, Any]:
     h = get_hatchet()
     result = await h.workflows.aio_get(workflow_id)
+    return _dump(result)
+
+
+async def get_workflow_version(
+    workflow_id: Annotated[str, Field(description="The workflow ID (UUID).")],
+    version: Annotated[
+        str | None,
+        Field(
+            description="Specific workflow version ID (UUID). Defaults to the latest version."
+        ),
+    ] = None,
+) -> dict[str, Any]:
+    h = get_hatchet()
+    result = await h.workflows.aio_get_version(workflow_id, version=version)
+    return _dump(result)
+
+
+async def get_workflow_metrics(
+    workflow_id: Annotated[str, Field(description="The workflow ID (UUID).")],
+    status: Annotated[
+        str | None,
+        Field(
+            description="Filter metrics to runs with this WorkflowRunStatus: PENDING, "
+            "QUEUED, RUNNING, SUCCEEDED, FAILED, CANCELLED, BACKOFF."
+        ),
+    ] = None,
+    group_key: Annotated[
+        str | None,
+        Field(description="Filter metrics to runs grouped by this concurrency key."),
+    ] = None,
+) -> dict[str, Any]:
+    status_enum = _parse_enum(status, WorkflowRunStatus, field="status")
+    result = await _rest_call(
+        lambda client, _tenant: WorkflowApi(client).workflow_get_metrics(
+            workflow=workflow_id, status=status_enum, group_key=group_key
+        )
+    )
     return _dump(result)
 
 
@@ -85,6 +124,18 @@ READ_TOOLS: list[tuple[Callable[..., Any], str, str]] = [
         get_workflow,
         "get_workflow",
         "Get a single workflow definition by its ID (versions, tags, jobs).",
+    ),
+    (
+        get_workflow_version,
+        "get_workflow_version",
+        "Get a specific version of a workflow definition (or the latest if version is "
+        "omitted). Use to inspect the DAG, default priority, and tags of a deployed version.",
+    ),
+    (
+        get_workflow_metrics,
+        "get_workflow_metrics",
+        "Get aggregate metrics for a workflow (success/failure/duration counts), optionally "
+        "scoped to a specific run status or concurrency group key.",
     ),
 ]
 
