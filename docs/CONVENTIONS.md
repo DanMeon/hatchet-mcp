@@ -10,14 +10,14 @@ Documentation policy for this project. We adopt a **spec-driven + immutable per-
 |---|---|---|---|
 | **Living** | Always current — location pointers + timeline + rules for other docs | Free to update, fine to touch on every change | `docs/CONVENTIONS.md` (itself), `docs/roadmap/README.md`, `docs/upstream/README.md`, `docs/traces/coverage.md`, `CHANGELOG.md`, `CLAUDE.md`, `AGENTS.md`, `README.md` |
 | **Active** | Staging before flowing out to an external system | Major changes only, in-place update OK | `docs/upstream/<topic>.md` |
-| **Draft** | Spec under construction — actively updated until its version GAs | Free to update until GA, then transitions to Frozen | `docs/roadmap/v<X.Y.Z>/<topic>.md` (pre-GA target version) |
-| **Frozen** | GA'd spec / completed stage / completed verification | **No changes** — only typo/link fixes in place. Larger changes require a new spec + supersede | `docs/roadmap/v<X.Y.Z>/<topic>.md` (post-GA), `docs/implementation/v<X.Y.Z>/stages/*.md` |
+| **Draft** | Spec under construction — actively updated until its version reaches GA | Free to update until GA, then transitions to GA status | `docs/roadmap/v<X.Y.Z>/<topic>.md` (pre-release) |
+| **GA** | Released spec / completed stage / completed verification | **No changes** — only typo/link fixes in place. Larger changes require a new spec + supersede | `docs/roadmap/v<X.Y.Z>/<topic>.md` (post-release), `docs/implementation/v<X.Y.Z>/stages/*.md` |
 
-`Frozen` follows the operating model of [Rust RFCs](https://rust-lang.github.io/rfcs/) / [Python PEPs](https://peps.python.org/): the historical record of a decision is preserved, so "why was it designed this way" stays clear.
+`GA` follows the operating model of [Rust RFCs](https://rust-lang.github.io/rfcs/) / [Python PEPs](https://peps.python.org/): the historical record of a decision is preserved, so "why was it designed this way" stays clear. The `GA` label folds two ideas — *released* (a fact about the parent version) and *immutable* (a policy on the body) — into one status the reader can pattern-match without looking up two rules.
 
-### Frozen exemption — Living-policy schema migration
+### GA exemption — non-semantic schema migration
 
-An exception to the no-edit rule for Frozen bodies. A **non-semantic** change that preserves the decision, citations, and meaning while updating only the *representation* of metadata is allowed in place — e.g. a bulk frontmatter schema migration.
+An exception to the no-edit rule for GA bodies. A **non-semantic** change that preserves the decision, citations, and meaning while updating only the *representation* of metadata is allowed in place — e.g. a bulk frontmatter schema migration.
 
 Conditions:
 
@@ -27,9 +27,9 @@ Conditions:
 
 Semantic changes (decision / citation / meaning) follow the normal supersede procedure.
 
-### Frozen external-dependency rot
+### GA external-dependency rot
 
-A Frozen body is a historical record. As time passes and external dependencies (library versions / API signatures / external URLs) get deprecated, the body is not changed — preserving the accuracy *as of the decision* is the point of immutability. Current truth lives in the *code* and the *latest spec*.
+A GA body is a historical record. As time passes and external dependencies (library versions / API signatures / external URLs) get deprecated, the body is not changed — preserving the accuracy *as of the decision* is the point of immutability. Current truth lives in the *code* and the *latest spec*.
 
 ## Status Metadata — YAML frontmatter
 
@@ -37,10 +37,11 @@ Every spec except `Living` starts with a YAML frontmatter block:
 
 ```markdown
 ---
-status: Frozen
-description: <one-line summary — optional, 50-150 chars recommended>
-ga: v0.2.0
-last_updated: 2026-05-20
+status: GA
+description: <one-line summary, 50-150 chars recommended>
+version: v0.2.0
+released: 2026-05-21
+last_updated: 2026-05-21
 ---
 
 # <Document Title>
@@ -52,36 +53,50 @@ last_updated: 2026-05-20
 
 | Field | Type | Rule |
 |---|---|---|
-| `status` | enum: `Active` / `Draft` / `Frozen` / `Superseded` | required |
+| `status` | enum: `Active` / `Draft` / `GA` / `Superseded` | required |
 | `description` | non-empty string (50-150 chars recommended) | required. One-line summary — for index/search/tooltip |
-| `ga` | `vX.Y.Z` SemVer | required when `status: Frozen` or `Superseded` (except meta-level `docs/implementation/<topic>.md`, RESOLVED `docs/upstream/<topic>.md`, **pre-GA stage log** — see § Implementation Log Structure / § upstream/). Mutex with `target` (except pre-GA stage) |
-| `target` | `vX.Y.Z` SemVer | required when `status: Draft`. The `status: Frozen` + `target` combination is allowed only for pre-GA stage logs (§ Implementation Log Structure). Mutex with `ga` |
+| `version` | `vX.Y.Z` SemVer | required for `Draft` / `GA` / `Superseded`. Forbidden for `Active`. Permanent identifier — a Draft's `version` is its target release; on GA the same key carries the same value |
+| `released` | `YYYY-MM-DD` | required for `GA` / `Superseded`. The date the parent version reached GA. Forbidden for `Active` / `Draft` |
 | `supersedes` | `<vX.Y.Z>/<topic>.md` or omitted | what the new spec replaces |
 | `superseded_by` | `<vX.Y.Z>/<topic>.md` | required when `status: Superseded` |
-| `last_updated` | `YYYY-MM-DD` | required. Auto-updated on meaningful-change commits ([hook](#auto-updated-last_updated)) |
+| `last_updated` | `YYYY-MM-DD` | required. Auto-updated on meaningful-change commits ([hook](#auto-updated-last_updated)). Distinct from `released`: `released` is a fact about the parent version, `last_updated` is editorial activity on this file |
 
 `description` guidance:
 
 - One-line summary — a compression of the first paragraph or title+core decision. 50-150 chars recommended
-- No added meaning — must be a compression of what's already in the body. No new decision / citation / fact (the Frozen body immutability principle especially)
-- A non-semantic format change, so the Frozen exemption [Living-policy schema migration](#frozen-exemption--living-policy-schema-migration) applies — even Frozen specs may add it in place
+- No added meaning — must be a compression of what's already in the body. No new decision / citation / fact (the GA body immutability principle especially)
+- A non-semantic format change, so the GA exemption [non-semantic schema migration](#ga-exemption--non-semantic-schema-migration) applies — even GA specs may add or refine it in place
 - Meaningful for all document kinds (roadmap / design / implementation / upstream / verification), so there is no schema branch
 - **Quoting** — wrap the whole value in double quotes `"..."` and use single quotes for inline code/identifiers `'hatchet-mcp'` (YAML-safe + flat-parser compatible). E.g. `description: "v0.2.0 — 'read_only' gate..."`
 
-`Active` (e.g. `upstream/<topic>.md`) omits both `ga` and `target`.
+`Active` (e.g. `upstream/<topic>.md`) omits both `version` and `released` — by definition not tied to a release.
 
 `Living` has no frontmatter — by definition always current. Instead an index like a README exposes the Status of other documents.
 
+### Lifecycle exceptions (GA without a version)
+
+Two GA documents omit `version` because they're not tied to a single release:
+
+1. **Meta-level implementation log** — `docs/implementation/<topic>.md` (flat, not under a `vX.Y.Z/`) — cross-version meta work like this schema migration itself
+2. **Resolved upstream doc** — `docs/upstream/<topic>.md` after the in-place transition described in § upstream/
+
+Both still carry `status: GA` + `released`; only `version` is omitted.
+
+### Pre-GA stage log
+
+A stage file under `docs/implementation/vX.Y.Z/stages/stage-N.md` is **immutable on write** even before its parent version reaches GA. The frontmatter is `status: Draft` + `version: vX.Y.Z`; immutability is a policy of § Implementation Log Structure, not enforced by the schema. On parent GA, bulk-flip `status: Draft → GA` and add `released: <parent GA date>`; `version` stays as-is.
+
 ### Example
 
-One representative form (Frozen). The others (`Draft` / `Active` / `Superseded`) apply the field combinations from the schema table.
+One representative form (GA). The others (`Draft` / `Active` / `Superseded`) apply the field combinations from the schema table.
 
 ```markdown
 ---
-status: Frozen
+status: GA
 description: "v0.2.0 — 'read_only' gate + 'dry_run' preview for mutating tools. Blocked by default, mutations only on explicit opt-in"
-ga: v0.2.0
-last_updated: 2026-05-20
+version: v0.2.0
+released: 2026-05-21
+last_updated: 2026-05-21
 ---
 
 # v0.2.0 — Mutating-Tool Gate
@@ -103,19 +118,19 @@ docs/
 ├── init/                             (legacy) flat docs from before the spec system — exempt from conventions/lint
 ├── roadmap/
 │   ├── README.md                     Living  — active spec index + unstarted narrative
-│   └── v<X.Y.Z>/<topic>.md           Draft → Frozen on GA — per-version spec
+│   └── v<X.Y.Z>/<topic>.md           Draft → GA on release — per-version spec
 ├── design/
-│   └── v<X.Y.Z>/<topic>-research.md  Draft → Frozen on GA — ADR-style decision evidence
+│   └── v<X.Y.Z>/<topic>-research.md  Draft → GA on release — ADR-style decision evidence
 ├── implementation/
-│   ├── v<X.Y.Z>/...                  Frozen  — completed stage work logs
-│   └── <topic>.md                    Frozen  — meta-level / cross-version work
+│   ├── v<X.Y.Z>/...                  GA      — completed stage work logs
+│   └── <topic>.md                    GA      — meta-level / cross-version work
 ├── traces/
 │   └── coverage.md                   Living  — spec ↔ test auto mapping
 ├── upstream/
 │   ├── README.md                     Living  — active / resolved issue index + archive policy
 │   └── <topic>.md                    Active  — drafts of issues for external deps (Hatchet core / hatchet-sdk). Archived once merged upstream
 └── verification/
-    └── v<X.Y.Z>/...                  Frozen  — verification reports for large units of work (limited)
+    └── v<X.Y.Z>/...                  GA      — verification reports for large units of work (limited)
 ```
 
 ### init/
@@ -126,17 +141,17 @@ docs/
 ### roadmap/
 
 - `README.md` (Living) — active spec index + unstarted-work narrative. The SSOT for which spec targets which version; also holds the intent/scope of unstarted minors
-- `vX.Y.Z/<topic>.md` (Draft → Frozen) — per-version spec. One major topic of a release = one file
+- `vX.Y.Z/<topic>.md` (Draft → GA) — per-version spec. One major topic of a release = one file
 
 ### design/
 
-- `vX.Y.Z/<topic>-research.md` (Draft → Frozen) — ADR-style decision evidence. Decision matrix + per-item (facts / validator counter-arguments / final decision / sources). 1:1 paired with its roadmap spec
+- `vX.Y.Z/<topic>-research.md` (Draft → GA) — ADR-style decision evidence. Decision matrix + per-item (facts / validator counter-arguments / final decision / sources). 1:1 paired with its roadmap spec
 
 ### implementation/
 
-- `vX.Y.Z/migration.md` or `vX.Y.Z/stages/stage-N.md` (Frozen) — work log. Frozen on completion. Records deliverables / verification results / carried-over items
+- `vX.Y.Z/migration.md` or `vX.Y.Z/stages/stage-N.md` — work log. Immutable on completion. Records deliverables / verification results / carried-over items
 - Small work (single session / a few days) goes in a single `migration.md`. Large work (multiple weeks, dependency tracking needed) is split into `stages/stage-N.md`
-- **If a stage is authored before its parent version GAs**, the frontmatter is `status: Frozen`, `target: vX.Y.Z` (immutable as written, GA label not yet assigned). On parent GA, bulk-convert `target` → `ga`
+- **If a stage is authored before its parent version reaches GA**, the frontmatter is `status: Draft` + `version: vX.Y.Z` (body immutable as written — policy of this section, not the schema). On parent GA, bulk-flip `status: Draft → GA` and add `released: <parent GA date>` — `version` stays the same
 
 ### upstream/
 
@@ -145,11 +160,11 @@ docs/
 - This directory is staging before flowing out to an external system (GitHub Issues) — not part of a formal spec
 - **On resolution** — two options:
   - **delete** — when no other spec references this file. The info is preserved by the GitHub permalink + this PR's commit history
-  - **in-place Frozen transition** — when a Frozen spec references this file. Set frontmatter `status: Frozen` (omit `ga` — not tied to a specific version), add a one-line block quote `> **RESOLVED** — see upstream PR/commit …` above the first header. Preserve the existing body (historical record)
+  - **in-place GA transition** — when a GA spec references this file. Set frontmatter `status: GA` + `released: <resolution date>` (omit `version` — not tied to a specific release), add a one-line block quote `> **RESOLVED** — see upstream PR/commit …` above the first header. Preserve the existing body (historical record)
 
 ### verification/
 
-- `vX.Y.Z/<scope>-review.md` (Frozen) — output of a verifier subagent (code-reviewer / test-automator). Limited to **large units of work** (multi-stage / suspicious areas / cross-cutting refactors)
+- `vX.Y.Z/<scope>-review.md` (GA) — output of a verifier subagent (code-reviewer / test-automator). Limited to **large units of work** (multi-stage / suspicious areas / cross-cutting refactors)
 - Small work (single-session PR / typo / dep bump) skips this — git log + PR description is the SSOT
 
 ## Spec / ADR Body Structure
@@ -161,7 +176,7 @@ The SSOT for body structure rules lives in the `/new-spec` skill's template file
 - **ADR skeleton**: [`.claude/skills/new-spec/templates/adr.md`](../.claude/skills/new-spec/templates/adr.md) — placeholders only
 - **ADR rules**: [`.claude/skills/new-spec/references/adr.md`](../.claude/skills/new-spec/references/adr.md) — per-section prose (standard intro phrase, decision matrix format, four subsections (Facts / Validator Counter-Arguments / Final Decision / Primary Sources))
 
-Manual writes, post-Frozen typo fixes, and new specs all use these two templates as the single SSOT. The `/new-spec` skill scaffolds by copying these templates — automation and manual writing stay aligned with no drift risk.
+Manual writes, post-GA typo fixes, and new specs all use these two templates as the single SSOT. The `/new-spec` skill scaffolds by copying these templates — automation and manual writing stay aligned with no drift risk.
 
 If this section and a template file disagree, **the template file wins**.
 
@@ -189,16 +204,16 @@ Core separation rules:
 Make inter-document dependencies one-directional to break the chain where "changing one document forces updating another".
 
 ```
-Living  ───→  Active  ───→  Draft  ───→  Frozen
-  ↑              ↑             ↑             ↑
-  └──────────────┴─────────────┴─────────────┘
+Living  ───→  Active  ───→  Draft  ───→  GA
+  ↑              ↑             ↑          ↑
+  └──────────────┴─────────────┴──────────┘
            (links pointing back up are OK)
 ```
 
 - **Living → anywhere** OK (index role)
-- **Active → Draft / Frozen** OK (a phase points to a spec)
-- **Draft → Active / Living / Frozen** OK
-- **Frozen → elsewhere** avoid where possible (adding a new cross-link after Frozen is a body edit)
+- **Active → Draft / GA** OK (a phase points to a spec)
+- **Draft → Active / Living / GA** OK
+- **GA → elsewhere** avoid where possible (adding a new cross-link after GA is a body edit)
 
 ### No direct spec ↔ spec links (one exception)
 
@@ -213,21 +228,21 @@ The `/new-spec <version> <topic>` Claude Code skill automates this procedure (`.
 ### When creating a new v<X.Y.Z>
 
 1. Create directories: `docs/roadmap/v<X.Y.Z>/`, `docs/design/v<X.Y.Z>/`
-2. Write the spec file — frontmatter `status: Draft`, `target: vX.Y.Z`
+2. Write the spec file — frontmatter `status: Draft`, `version: vX.Y.Z`
 3. Write the paired design research file — same frontmatter
 4. Add a row to the index table in `docs/roadmap/README.md` (promote from the unstarted narrative if it was there)
 
-### After a version GAs
+### After a version reaches GA
 
-1. Transition specs in that vX.Y.Z directory: frontmatter `status: Draft → Frozen`, `target: vX.Y.Z` → `ga: vX.Y.Z`
+1. Transition specs in that vX.Y.Z directory: frontmatter `status: Draft → GA`, add `released: <GA date>`. `version` stays as-is
 2. Update the `docs/roadmap/README.md` index (Status column)
 3. Finalize that version's section in `CHANGELOG.md`
-4. Write the implementation log — `docs/implementation/v<X.Y.Z>/...` (Frozen on write)
+4. Write the implementation log — `docs/implementation/v<X.Y.Z>/...` (immutable on write)
 
-### When a decision needs changing after Frozen
+### When a decision needs changing after GA
 
 1. **Write a new spec** — never edit the existing file. A new file (e.g. `docs/roadmap/v0.4.0/<topic>-correction.md`)
-2. Update **only the frontmatter** of the existing Frozen spec: `status: Superseded`, `superseded_by: v0.4.0/<topic>-correction.md`. Preserve `ga`
+2. Update **only the frontmatter** of the existing GA spec: `status: Superseded`, `superseded_by: v0.4.0/<topic>-correction.md`. Preserve `version` + `released`
 3. Back-reference in the new spec's `supersedes` — forming a two-way chain
 4. Add a § Supersedes section to the new spec body stating what changed and how
 5. Record the reason in CHANGELOG
@@ -240,7 +255,7 @@ Three kinds under `docs/implementation/`:
 
 - `vX.Y.Z/stages/stage-N.md` — work named in that release's spec § implementation-stage split (large, multi-stage). 1:1 mapping with the spec's stage table
 - `vX.Y.Z/<topic>.md` (flat under vX.Y.Z) — small specless work (refactor / chore / perf / dep bump). Written only when the a/b/c option comparison has value beyond a single CHANGELOG line. 1:1 with the branch prefix `<type>/<topic>`
-- `<topic>.md` (flat outside any vX.Y.Z) — meta-level / cross-version work (e.g. a docs-system overhaul). Frozen on write, frontmatter `ga` may be omitted (N/A — not tied to a version)
+- `<topic>.md` (flat outside any vX.Y.Z) — meta-level / cross-version work (e.g. a docs-system overhaul). Immutable on write; frontmatter `version` is omitted (N/A — not tied to a single release); `status: GA` + `released: <write date>` still required
 
 Changes that fit in one CHANGELOG line (typo cleanup, simple dep bump, small docstring update) get no file — git log + CHANGELOG is the SSOT.
 
@@ -269,7 +284,7 @@ In CI, `scripts/generate_spec_trace.py` extracts markers via AST static analysis
 
 ## Archive Policy (v1.0+)
 
-At each major release GA, move the previous major's frozen specs to `docs/archive/v<N>/` (same structure, no body change). The README index exposes only the active major; the archive is a one-line link to a separate page. The goal is index / search readability — unrelated to git size. **A pre-v1.0-GA task**, so deferred until then.
+At each major release GA, move the previous major's GA specs to `docs/archive/v<N>/` (same structure, no body change). The README index exposes only the active major; the archive is a one-line link to a separate page. The goal is index / search readability — unrelated to git size. **A pre-v1.0-GA task**, so deferred until then.
 
 ## Naming Rules
 
@@ -283,7 +298,7 @@ At each major release GA, move the previous major's frozen specs to `docs/archiv
 
 CONVENTIONS.md itself is Living. Update in place on policy change. **But** because changes here affect all spec writing:
 
-- Large changes (e.g. adding/removing a Status category, frontmatter schema change) include a bulk migration of affected existing documents in the PR (the Frozen exemption may apply)
+- Large changes (e.g. adding/removing a Status category, frontmatter schema change) include a bulk migration of affected existing documents in the PR (the [GA exemption](#ga-exemption--non-semantic-schema-migration) may apply)
 - Small changes (e.g. a naming rule addition) are in-place + apply to new documents first, with existing ones cleaned up gradually
 
 ## References

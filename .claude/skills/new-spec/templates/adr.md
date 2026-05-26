@@ -1,7 +1,7 @@
 ---
 status: Draft
 description: "<version> <topic> ADR — <50-150 chars, the paired spec's N decisions / key options, compressed>"
-target: <version>
+version: <version>
 last_updated: <YYYY-MM-DD>
 ---
 

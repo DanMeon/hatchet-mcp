@@ -1,7 +1,8 @@
 ---
-status: Frozen
+status: GA
 description: "v0.3.0 operational-toolkit-expansion ADR — 7 decisions: tool surface, meta pattern, HTTP reuse, resource reliability, MCP annotations, error/log structure, 'get_run_status' camelCase"
-ga: v0.3.0
+version: v0.3.0
+released: 2026-05-26
 last_updated: 2026-05-26
 ---
 

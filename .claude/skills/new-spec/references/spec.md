@@ -1,6 +1,6 @@
 # Spec body writing rules — `docs/roadmap/vX.Y.Z/<topic>.md`
 
-Section-by-section rules for filling placeholders in `templates/spec.md`. Loaded by the `/new-spec` skill (step 2) alongside the template. The same rules apply to manual writes and Frozen-spec typo fixes.
+Section-by-section rules for filling placeholders in `templates/spec.md`. Loaded by the `/new-spec` skill (step 2) alongside the template. The same rules apply to manual writes and GA-spec typo fixes.
 
 ## Per-section rules
 
@@ -65,6 +65,6 @@ The most-violated rule:
 ## Cross-cutting policies (CONVENTIONS.md SSOT)
 
 - § Section Role Separation — info routing across spec / ADR / CHANGELOG / implementation log
-- § Status Metadata — frontmatter schema (status / target / ga / last_updated / description quoting)
+- § Status Metadata — frontmatter schema (status / version / released / last_updated / description quoting)
 - § Acceptance Criteria Format — AC-N IDs
 - § Naming Rules — kebab-case, `vX.Y.Z` directories
