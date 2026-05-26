@@ -8,7 +8,7 @@ This document is Living — update freely.
 
 The spec-driven documentation system was introduced for new work. Design documents written before it live under [../init/](../init/) (exempt from the conventions). New work is captured as per-version specs via `/new-spec`.
 
-`hatchet-mcp` is at **v0.2.0** (Beta).
+`hatchet-mcp` is at **v0.3.0** (Beta).
 
 ## Active spec index
 
@@ -17,7 +17,7 @@ Each row is one spec + its paired design research (if any). Status follows [CONV
 | Version | Status | Roadmap spec | Design research (ADR) |
 |---|---|---|---|
 | v0.2.0 (reliability) | Frozen | [v0.2.0/reliability.md](v0.2.0/reliability.md) | [design/v0.2.0/reliability-research.md](../design/v0.2.0/reliability-research.md) |
-| v0.3.0 (operational-toolkit-expansion) | Draft | [v0.3.0/operational-toolkit-expansion.md](v0.3.0/operational-toolkit-expansion.md) | [design/v0.3.0/operational-toolkit-expansion-research.md](../design/v0.3.0/operational-toolkit-expansion-research.md) |
+| v0.3.0 (operational-toolkit-expansion) | Frozen | [v0.3.0/operational-toolkit-expansion.md](v0.3.0/operational-toolkit-expansion.md) | [design/v0.3.0/operational-toolkit-expansion-research.md](../design/v0.3.0/operational-toolkit-expansion-research.md) |
 
 ## Unstarted work
 

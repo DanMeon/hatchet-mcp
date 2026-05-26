@@ -1,7 +1,7 @@
 ---
-status: Draft
+status: Frozen
 description: "v0.3.0 operational-toolkit-expansion ADR — 7 decisions: tool surface, meta pattern, HTTP reuse, resource reliability, MCP annotations, error/log structure, 'get_run_status' camelCase"
-target: v0.3.0
+ga: v0.3.0
 last_updated: 2026-05-26
 ---
 

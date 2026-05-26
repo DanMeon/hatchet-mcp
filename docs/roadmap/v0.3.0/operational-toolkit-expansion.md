@@ -1,7 +1,7 @@
 ---
-status: Draft
+status: Frozen
 description: "v0.3.0 — +10 read + 4 mutating tools ('webhooks'/'meta' domains), HTTP pool reuse, typed errors, request-id logs, resource reliability fix, 'get_run_status' camelCase"
-target: v0.3.0
+ga: v0.3.0
 last_updated: 2026-05-26
 ---
 
