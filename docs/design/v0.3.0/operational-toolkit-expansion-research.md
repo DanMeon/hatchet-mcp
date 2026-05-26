@@ -199,7 +199,6 @@ B — switch to `workflowRunId` camelCase. Single-line change in `tools/runs.py:
 
 ### Primary Sources
 
-- Project invariant: [CLAUDE.md](../../../CLAUDE.md) — "Tool output uses the Hatchet REST shape"
 - Hatchet REST OpenAPI uses `runId` / `workflowRunId` throughout: <https://docs.hatchet.run/api>
 
 ## References

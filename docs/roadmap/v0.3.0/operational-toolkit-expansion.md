@@ -60,4 +60,3 @@ Rationale, alternatives, and failure scenarios for the key decisions live in the
 - `src/hatchet_mcp/tools/runs.py:151-158` — new camelCase `get_run_status` return shape (Decision 7)
 - `tests/test_sdk_contract.py` — pins SDK alias drift for `_RUN_SUMMARY_FIELDS` + `list_events` drop set
 - `tests/test_regressions.py` + `tests/test_reverify_gaps.py` — behavior pins for every AC above
-- [CLAUDE.md](../../../CLAUDE.md) — invariant 4 ("Tool output uses the Hatchet REST shape") that Decision 7 restores
