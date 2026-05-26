@@ -50,7 +50,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed (breaking)
 
 - **`get_run_status`** return-key flips from `{"workflow_run_id": "..."}` to
-  `{"workflowRunId": "..."}`, restoring [CLAUDE.md](CLAUDE.md) invariant 4 ("tool output uses
+  `{"workflowRunId": "..."}`, restoring CLAUDE.md invariant 4 ("tool output uses
   the Hatchet REST shape — camelCase via `by_alias=True`"). The resource at
   `hatchet://runs/{workflow_run_id}/status` follows by pass-through. Path-parameter names
   are unchanged. Callers parsing the response key by name must switch to `workflowRunId`
