@@ -11,6 +11,7 @@ from typing import Annotated, Any, Literal
 from hatchet_sdk.clients.rest.api.workflow_runs_api import WorkflowRunsApi
 from hatchet_sdk.clients.v1.api_client import maybe_additional_metadata_to_kv
 from hatchet_sdk.features.runs import BulkCancelReplayOpts
+from mcp.server.fastmcp import Context
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
@@ -154,7 +155,7 @@ async def get_run_status(
 ) -> dict[str, Any]:
     h = get_hatchet()
     status = await h.runs.aio_get_status(workflow_run_id)
-    return {"workflow_run_id": workflow_run_id, "status": status.value}
+    return {"workflowRunId": workflow_run_id, "status": status.value}
 
 
 async def trigger_workflow(
@@ -194,8 +195,14 @@ async def _resolve_and_bulk(
     workflow_ids: list[str] | None,
     additional_metadata: dict[str, str] | None,
     dry_run: bool,
+    ctx: Context | None = None,
 ) -> dict[str, Any]:
-    """Shared cancel/replay logic: resolve targets, enforce the 500 cap, preview unless dry_run is false."""
+    """Shared cancel/replay logic: resolve targets, enforce the 500 cap, preview unless dry_run is false.
+
+    When ``ctx`` is supplied (FastMCP injects it on the public tool entry points), progress
+    notifications are streamed to clients that support them — useful because resolution +
+    bulk submit can each take a couple of seconds against a large filter.
+    """
     _require_writable()
 
     has_filter = any(
@@ -216,6 +223,9 @@ async def _resolve_and_bulk(
     if run_ids:
         target_ids = list(run_ids)
     else:
+        if ctx is not None:
+            await ctx.info(f"Resolving runs matching the filter for bulk {action}")
+            await ctx.report_progress(0, 2, "Resolving target runs")
         until_dt = _parse_dt(until, field="until") or datetime.now(timezone.utc)
         since_dt = _parse_dt(since, field="since") or (until_dt - timedelta(days=1))
         status_enums = _parse_statuses(statuses)
@@ -253,6 +263,8 @@ async def _resolve_and_bulk(
             "note": "No runs matched; nothing to do.",
         }
     if dry_run:
+        if ctx is not None:
+            await ctx.info(f"Dry-run preview: {matched} run(s) would be {action}ed")
         return {
             "action": action,
             "dry_run": True,
@@ -265,11 +277,16 @@ async def _resolve_and_bulk(
             ),
         }
 
+    if ctx is not None:
+        await ctx.info(f"Submitting bulk {action} for {matched} run(s)")
+        await ctx.report_progress(1, 2, f"Submitting bulk {action}")
     opts = BulkCancelReplayOpts(ids=target_ids)
     if action == "cancel":
         await get_hatchet().runs.aio_bulk_cancel(opts)
     else:
         await get_hatchet().runs.aio_bulk_replay(opts)
+    if ctx is not None:
+        await ctx.report_progress(2, 2, f"Bulk {action} complete")
     return {
         "action": action,
         "dry_run": False,
@@ -318,6 +335,7 @@ async def cancel_runs(
             description="When true (default), return the matching run IDs WITHOUT cancelling. Set false to actually cancel."
         ),
     ] = True,
+    ctx: Context | None = None,
 ) -> dict[str, Any]:
     return await _resolve_and_bulk(
         action="cancel",
@@ -328,7 +346,32 @@ async def cancel_runs(
         workflow_ids=workflow_ids,
         additional_metadata=additional_metadata,
         dry_run=dry_run,
+        ctx=ctx,
     )
+
+
+async def cancel_run(
+    run_id: Annotated[
+        str,
+        Field(description="The single workflow/task run external ID (UUID) to cancel."),
+    ],
+) -> dict[str, Any]:
+    """Cancel one run by ID. No dry-run / bulk-cap dance; for many IDs use cancel_runs."""
+    _require_writable()
+    await get_hatchet().runs.aio_cancel(run_id)
+    return {"action": "cancel", "executed": True, "run_id": run_id}
+
+
+async def replay_run(
+    run_id: Annotated[
+        str,
+        Field(description="The single workflow/task run external ID (UUID) to replay."),
+    ],
+) -> dict[str, Any]:
+    """Replay one run by ID. No dry-run / bulk-cap dance; for many IDs use replay_runs."""
+    _require_writable()
+    await get_hatchet().runs.aio_replay(run_id)
+    return {"action": "replay", "executed": True, "run_id": run_id}
 
 
 async def replay_runs(
@@ -370,6 +413,7 @@ async def replay_runs(
             description="When true (default), return the matching run IDs WITHOUT replaying. Set false to actually replay."
         ),
     ] = True,
+    ctx: Context | None = None,
 ) -> dict[str, Any]:
     return await _resolve_and_bulk(
         action="replay",
@@ -380,6 +424,7 @@ async def replay_runs(
         workflow_ids=workflow_ids,
         additional_metadata=additional_metadata,
         dry_run=dry_run,
+        ctx=ctx,
     )
 
 
@@ -411,6 +456,18 @@ MUTATING_TOOLS: list[tuple[Callable[..., Any], str, str, ToolAnnotations]] = [
         trigger_workflow,
         "trigger_workflow",
         "Trigger a new workflow run by workflow name with an input payload. Returns the run details.",
+        _destructive(idempotent=False),
+    ),
+    (
+        cancel_run,
+        "cancel_run",
+        "Cancel a single workflow/task run by ID. For many IDs at once use cancel_runs (with dry-run + 500-cap).",
+        _destructive(idempotent=True),
+    ),
+    (
+        replay_run,
+        "replay_run",
+        "Replay (re-run) a single workflow/task run by ID. For many IDs at once use replay_runs (with dry-run + 500-cap).",
         _destructive(idempotent=False),
     ),
     (

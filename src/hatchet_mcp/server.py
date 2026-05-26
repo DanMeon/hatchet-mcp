@@ -1,13 +1,14 @@
 """FastMCP stdio server exposing Hatchet over its REST API.
 
-Twenty-five read-only tools are always registered; seventeen mutating tools (run control,
-event push, pause/resume, cron/scheduled/filter management) are registered only when
-``HATCHET_MCP_READ_ONLY=false`` and carry destructive annotations so clients can prompt for
-approval. Tools live in ``tools/`` by domain, each exposing READ_TOOLS / MUTATING_TOOLS
-catalogs; this module aggregates them, registers what the mode allows, and serves. All
-operational tools map to verified ``hatchet-sdk`` calls and return the SDK's Pydantic
-responses serialized to JSON (``by_alias=True``, matching the Hatchet REST/dashboard shape);
-``get_server_info`` is the one self-describing exception (see ``tools/server_info.py``).
+Thirty-five read-only tools are always registered; twenty-one mutating tools (run control,
+event push, pause/resume, cron/scheduled/filter management, webhook intake) are registered
+only when ``HATCHET_MCP_READ_ONLY=false`` and carry destructive annotations so clients can
+prompt for approval. Tools live in ``tools/`` by domain, each exposing READ_TOOLS /
+MUTATING_TOOLS catalogs; this module aggregates them, registers what the mode allows, and
+serves. All operational tools map to verified ``hatchet-sdk`` calls and return the SDK's
+Pydantic responses serialized to JSON (``by_alias=True``, matching the Hatchet
+REST/dashboard shape); ``get_server_info`` is the one self-describing exception (see
+``tools/server_info.py``).
 """
 
 import logging
@@ -21,11 +22,13 @@ from hatchet_mcp.config import ConfigError, load_config
 from hatchet_mcp.tools import (
     events,
     filters,
+    meta,
     observability,
     runs,
     schedules,
     server_info,
     tasks,
+    webhooks,
     workers,
     workflows,
 )
@@ -50,7 +53,9 @@ _TOOL_MODULES = (
     events,
     schedules,
     filters,
+    webhooks,
     observability,
+    meta,
     server_info,
 )
 
@@ -65,12 +70,19 @@ def muzzle_dependency_loggers() -> None:
 
 
 def register_read_tools(mcp: FastMCP) -> None:
-    """Register every read-only tool, wrapped with retry+deadline (reads are inherently idempotent)."""
+    """Register every read-only tool, wrapped with retry+deadline (reads are inherently idempotent).
+
+    Every read tool carries ``readOnlyHint=True, destructiveHint=False`` so clients that
+    respect annotations (Cursor, Claude Code) can skip approval prompts. The ``title`` field
+    (MCP 2025-06-18) is a display-name derived from the snake_case tool name.
+    """
     for fn, name, description in READ_TOOLS:
         mcp.add_tool(
             _shared._reliability_wrap(fn, retry=True),
             name=name,
+            title=_shared._humanize_tool_name(name),
             description=description,
+            annotations=_shared._read_only_annotations(),
         )
 
 
@@ -82,7 +94,11 @@ def register_mutating_tools(mcp: FastMCP) -> None:
     for fn, name, description, annotations in MUTATING_TOOLS:
         wrapped = _shared._reliability_wrap(fn, retry=bool(annotations.idempotentHint))
         mcp.add_tool(
-            wrapped, name=name, description=description, annotations=annotations
+            wrapped,
+            name=name,
+            title=_shared._humanize_tool_name(name),
+            description=description,
+            annotations=annotations,
         )
 
 

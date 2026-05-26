@@ -5,13 +5,20 @@ the read tools only ever touch the REST API. Construction does, however, validat
 token via the SDK's ``ClientConfig``, which is part of our fail-fast startup path.
 """
 
+import threading
+
 from hatchet_sdk import Hatchet
+from hatchet_sdk.clients.rest.api_client import ApiClient
 from hatchet_sdk.clients.v1.api_client import BaseRestClient
 
 from hatchet_mcp.config import ConfigError
 
 _hatchet: Hatchet | None = None
 _rest: BaseRestClient | None = None
+_api_client: ApiClient | None = None
+# Guards the double-checked init of _api_client: _rest_call runs in asyncio.to_thread,
+# so multiple workers can race past `if _api_client is None` and build two PoolManagers.
+_api_client_lock = threading.Lock()
 
 
 def init_hatchet() -> Hatchet:
@@ -51,3 +58,21 @@ def get_rest() -> BaseRestClient:
     if _rest is None:
         _rest = BaseRestClient(get_hatchet().config)
     return _rest
+
+
+def get_api_client() -> ApiClient:
+    """Return a process-wide ``ApiClient`` that reuses one ``urllib3.PoolManager``.
+
+    Each ``ApiClient()`` build constructs a new ``RESTClientObject`` and ``urllib3.PoolManager``,
+    so calling ``BaseRestClient.client()`` per request throws away every connection. Caching
+    one instance lets keep-alive amortize TCP/TLS across calls. ``ApiClient.__exit__`` is a
+    no-op (rest/api_client.py:93-97), so skipping the ``with`` block leaks nothing; the
+    underlying PoolManager is thread-safe. The double-checked lock guards against the
+    ``asyncio.to_thread`` workers in ``_rest_call`` racing past the ``None`` check.
+    """
+    global _api_client
+    if _api_client is None:
+        with _api_client_lock:
+            if _api_client is None:
+                _api_client = ApiClient(get_rest().api_config)
+    return _api_client

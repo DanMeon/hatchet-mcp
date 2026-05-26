@@ -23,7 +23,7 @@ from mcp.types import ToolAnnotations
 from pydantic import BaseModel
 
 from hatchet_mcp._logging import emit
-from hatchet_mcp.client import get_rest
+from hatchet_mcp.client import get_api_client, get_rest
 from hatchet_mcp.config import redact
 
 # * List limits and result-size guard
@@ -73,8 +73,34 @@ def _dump(model: BaseModel) -> dict[str, Any]:
     return _guard_size(_dump_item(model))
 
 
-def _api_error(exc: ApiException) -> RuntimeError:
-    """Turn an SDK REST exception into a concise, token-free error for the MCP client."""
+_STATUS_KIND: dict[int, str] = {
+    400: "validation_error",
+    401: "unauthorized",
+    403: "unauthorized",
+    404: "not_found",
+    409: "conflict",
+    422: "validation_error",
+    429: "rate_limited",
+}
+
+
+class HatchetAPIError(RuntimeError):
+    """An SDK REST exception translated for the MCP client, carrying the original status + kind.
+
+    The string form preserves the prior ``"Hatchet API error: status N, ..."`` shape so any
+    consumer pattern-matching on the prefix still works. The ``status`` and ``kind`` attributes
+    let an LLM (or a future structured-error channel) branch on the failure class without
+    re-parsing the message.
+    """
+
+    def __init__(self, message: str, *, status: int | None, kind: str) -> None:
+        super().__init__(message)
+        self.status = status
+        self.kind = kind
+
+
+def _api_error(exc: ApiException) -> HatchetAPIError:
+    """Turn an SDK REST exception into a concise, token-free error carrying status + kind."""
     parts: list[str] = []
     if exc.status is not None:
         parts.append(f"status {exc.status}")
@@ -83,7 +109,16 @@ def _api_error(exc: ApiException) -> RuntimeError:
     header = "Hatchet API error" + (f": {', '.join(parts)}" if parts else "")
     body = exc.body or exc.data
     detail = f" — {str(body)[:500]}" if body else ""
-    return RuntimeError(redact(header + detail))
+    status = exc.status
+    if status is None:
+        kind = "unknown"
+    elif status in _STATUS_KIND:
+        kind = _STATUS_KIND[status]
+    elif 500 <= status <= 599:
+        kind = "server_error"
+    else:
+        kind = "unknown"
+    return HatchetAPIError(redact(header + detail), status=status, kind=kind)
 
 
 def _parse_dt(value: str | None, *, field: str) -> datetime | None:
@@ -161,15 +196,15 @@ async def _rest_call(call: Callable[[ApiClient, str], _T]) -> _T:
 
     A handful of reads — v1 events, OTel traces, run timings — have no
     ``aio_*`` feature method, so they call the generated API classes directly. The
-    ``ApiClient`` context manager is entered inside the worker thread, mirroring how
-    the SDK's own feature clients wrap their sync calls in ``asyncio.to_thread``. The
-    callable receives the open client and the tenant ID.
+    ``ApiClient`` is process-wide cached (see ``client.get_api_client``) so one
+    ``urllib3.PoolManager`` survives across calls and keep-alive amortizes TCP/TLS.
+    The callable receives that client and the tenant ID.
     """
     base = get_rest()
+    client = get_api_client()
 
     def _invoke() -> _T:
-        with base.client() as client:
-            return call(client, base.tenant_id)
+        return call(client, base.tenant_id)
 
     return await asyncio.to_thread(_invoke)
 
@@ -198,6 +233,30 @@ def _destructive(*, idempotent: bool) -> ToolAnnotations:
     )
 
 
+# Read tools all share the same shape: no side effects, safe to retry, results may change
+# over time (worker state, run progress). Clients that respect annotations (Cursor,
+# Claude Code) can suppress per-call approval prompts when readOnlyHint=True.
+def _read_only_annotations() -> ToolAnnotations:
+    """A fresh ToolAnnotations for read tools — fresh per call so the instance isn't shared.
+
+    `mcp.types.ToolAnnotations` is a mutable Pydantic V2 model (no ``frozen=True``); sharing
+    one instance across every registered tool means a stray write to ``.readOnlyHint``
+    would flip the hint for all of them at once. Returning a fresh model per registration
+    sidesteps the footgun.
+    """
+    return ToolAnnotations(
+        readOnlyHint=True,
+        destructiveHint=False,
+        idempotentHint=True,
+        openWorldHint=True,
+    )
+
+
+def _humanize_tool_name(name: str) -> str:
+    """Turn ``list_runs`` into ``List Runs`` for the MCP 2025-06-18 ``title`` field."""
+    return name.replace("_", " ").title()
+
+
 # * Reliability — retry + per-call deadline
 # Every registered tool goes through `_reliability_wrap`. The 30s deadline is always on; the
 # retry loop runs only when `retry=True` (set by `register_read_tools` always, by
@@ -210,6 +269,23 @@ _PER_CALL_TIMEOUT_S = 30.0
 _RETRY_BACKOFFS_S: tuple[float, ...] = (1.0, 2.0, 4.0)
 _BACKOFF_JITTER = 0.25
 _RETRY_AFTER_CAP_S = 10.0
+
+
+def _current_request_id() -> str | None:
+    """Return the in-flight JSON-RPC request ID, or None outside a request scope.
+
+    Lets ``tool.ok`` / ``tool.error`` records correlate with the originating MCP call
+    when concurrent tool calls interleave on a single stdio session. Imported lazily
+    to avoid a circular import (``app`` → ``server`` already pulls ``_shared``).
+    """
+    try:
+        from hatchet_mcp.app import mcp
+
+        ctx = mcp.get_context()
+        rid = ctx.request_id
+        return str(rid) if rid is not None else None
+    except (LookupError, ValueError, RuntimeError, AttributeError):
+        return None
 
 
 def _is_retryable(exc: BaseException) -> bool:
@@ -286,6 +362,7 @@ def _reliability_wrap(fn: Callable[..., Any], *, retry: bool) -> Callable[..., A
             raise last
 
         start = time.perf_counter()
+        request_id = _current_request_id()
         try:
             try:
                 result = await asyncio.wait_for(
@@ -301,11 +378,16 @@ def _reliability_wrap(fn: Callable[..., Any], *, retry: bool) -> Callable[..., A
             else:
                 msg = f"{type(exc).__name__}: {exc}"
             redacted_msg = redact(msg)
+            error_kind = getattr(exc, "kind", None)
+            error_status = getattr(exc, "status", None)
             emit(
                 "tool.error",
                 tool=tool_name,
                 duration_ms=int((time.perf_counter() - start) * 1000),
                 redacted_error=redacted_msg,
+                request_id=request_id,
+                error_kind=error_kind,
+                error_status=error_status,
             )
             # Defense-in-depth scrub for the MCP JSON-RPC channel. ApiException-derived already
             # passed through `_api_error` (redacted RuntimeError), so skip that path; for everything
@@ -328,6 +410,7 @@ def _reliability_wrap(fn: Callable[..., Any], *, retry: bool) -> Callable[..., A
             "tool.ok",
             tool=tool_name,
             duration_ms=int((time.perf_counter() - start) * 1000),
+            request_id=request_id,
         )
         return result
 

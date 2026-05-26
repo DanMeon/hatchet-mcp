@@ -5,6 +5,7 @@ from typing import Annotated, Any
 
 from hatchet_sdk.clients.rest.api.event_api import EventApi
 from hatchet_sdk.clients.rest.models.create_event_request import CreateEventRequest
+from hatchet_sdk.clients.rest.models.replay_event_request import ReplayEventRequest
 from hatchet_sdk.clients.rest.models.v1_task_status import V1TaskStatus
 from hatchet_sdk.clients.v1.api_client import maybe_additional_metadata_to_kv
 from mcp.types import ToolAnnotations
@@ -122,6 +123,36 @@ async def list_event_keys() -> dict[str, Any]:
     return _dump(result)
 
 
+_EVENT_REPLAY_LIMIT = 500
+
+
+async def replay_events(
+    event_ids: Annotated[
+        list[str],
+        Field(
+            description="Event external IDs (UUIDs) to replay — each event re-fires its "
+            "downstream workflow runs. Capped at 500 IDs per call."
+        ),
+    ],
+) -> dict[str, Any]:
+    """Re-trigger runs from past events by event ID."""
+    _require_writable()
+    if not event_ids:
+        raise ValueError("event_ids must contain at least one event ID.")
+    if len(event_ids) > _EVENT_REPLAY_LIMIT:
+        raise ValueError(
+            f"{len(event_ids)} events exceed the {_EVENT_REPLAY_LIMIT}-event replay cap. "
+            "Submit fewer event IDs per call."
+        )
+    result = await _rest_call(
+        lambda client, tenant: EventApi(client).event_update_replay(
+            tenant=tenant,
+            replay_event_request=ReplayEventRequest(eventIds=event_ids),
+        )
+    )
+    return _dump(result)
+
+
 async def push_event(
     key: Annotated[str, Field(description="The event key (e.g. 'user:created').")],
     data: Annotated[
@@ -185,6 +216,12 @@ MUTATING_TOOLS: list[tuple[Callable[..., Any], str, str, ToolAnnotations]] = [
         push_event,
         "push_event",
         "Push an event (key + data) into the tenant, which may trigger event-driven workflows.",
+        _destructive(idempotent=False),
+    ),
+    (
+        replay_events,
+        "replay_events",
+        "Re-trigger runs from past events by event ID. Refuses to act on more than 500 event IDs per call.",
         _destructive(idempotent=False),
     ),
 ]

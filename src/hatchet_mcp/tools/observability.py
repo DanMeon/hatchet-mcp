@@ -14,7 +14,14 @@ from hatchet_sdk.clients.rest.models.rate_limit_order_by_field import (
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
-from hatchet_mcp._shared import _clamp_limit, _dump, _parse_dt, _parse_enum, _rest_call
+from hatchet_mcp._shared import (
+    _clamp_limit,
+    _dump,
+    _guard_size,
+    _parse_dt,
+    _parse_enum,
+    _rest_call,
+)
 from hatchet_mcp.client import get_hatchet
 
 
@@ -22,6 +29,18 @@ async def get_queue_metrics() -> dict[str, Any]:
     h = get_hatchet()
     queues = await h.metrics.aio_get_queue_metrics()
     return {"queues": queues}
+
+
+async def get_task_stats() -> dict[str, Any]:
+    h = get_hatchet()
+    result = await h.metrics.aio_get_task_stats()
+    # ^ SDK returns dict[str, TaskStat] (one Pydantic model per action name); _dump expects
+    # a single BaseModel, so serialize the inner values by hand and run the size guard.
+    stats = {
+        action: stat.model_dump(mode="json", by_alias=True)
+        for action, stat in result.items()
+    }
+    return _guard_size({"stats": stats})
 
 
 async def get_task_metrics(
@@ -130,6 +149,13 @@ READ_TOOLS: list[tuple[Callable[..., Any], str, str]] = [
         "get_task_metrics",
         "Get task counts grouped by status (queued, running, completed, failed, cancelled) "
         "over a time window. Defaults to the last 24h.",
+    ),
+    (
+        get_task_stats,
+        "get_task_stats",
+        "Get per-action task counts for the tenant — queued and running totals (and "
+        "per-queue breakdown) keyed by action name. Complements get_task_metrics "
+        "(windowed status counts) and get_queue_metrics (per-queue depth).",
     ),
     (
         get_run_timings,

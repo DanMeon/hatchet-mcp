@@ -13,6 +13,7 @@ from hatchet_sdk.clients.rest.models.scheduled_workflows_order_by_field import (
 from hatchet_sdk.clients.rest.models.workflow_run_order_by_direction import (
     WorkflowRunOrderByDirection,
 )
+from mcp.server.fastmcp import Context
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
@@ -81,6 +82,14 @@ async def get_cron(
 ) -> dict[str, Any]:
     h = get_hatchet()
     result = await h.cron.aio_get(cron_id)
+    return _dump(result)
+
+
+async def get_scheduled(
+    scheduled_id: Annotated[str, Field(description="The scheduled run ID (UUID).")],
+) -> dict[str, Any]:
+    h = get_hatchet()
+    result = await h.scheduled.aio_get(scheduled_id)
     return _dump(result)
 
 
@@ -258,6 +267,146 @@ async def reschedule(
     return _dump(result)
 
 
+_SCHEDULED_BULK_LIMIT = 500
+
+
+async def bulk_delete_scheduled(
+    scheduled_ids: Annotated[
+        list[str] | None,
+        Field(
+            description="Explicit scheduled-run IDs to delete. Mutually exclusive with the filter parameters."
+        ),
+    ] = None,
+    workflow_id: Annotated[
+        str | None,
+        Field(description="Filter mode: scoping to one workflow definition."),
+    ] = None,
+    parent_workflow_run_id: Annotated[
+        str | None,
+        Field(
+            description="Filter mode: child scheduled runs of this parent workflow run."
+        ),
+    ] = None,
+    parent_step_run_id: Annotated[
+        str | None,
+        Field(description="Filter mode: child scheduled runs of this parent step run."),
+    ] = None,
+    statuses: Annotated[
+        list[str] | None,
+        Field(
+            description="Filter mode: ScheduledRunStatus values. NOTE: server currently logs a "
+            "warning and ignores this filter; supplied for forward-compatibility."
+        ),
+    ] = None,
+    additional_metadata: Annotated[
+        dict[str, str] | None,
+        Field(
+            description="Filter mode: match scheduled-run additional-metadata key/values."
+        ),
+    ] = None,
+    dry_run: Annotated[
+        bool,
+        Field(
+            description="When true (default), preview the matching scheduled-run IDs without "
+            "deleting. Set false to actually delete."
+        ),
+    ] = True,
+    ctx: Context | None = None,
+) -> dict[str, Any]:
+    """Bulk-delete scheduled (one-off, future-dated) runs by IDs or by filter.
+
+    Mirrors the safety posture of bulk cancel/replay (``runs.py``): explicit IDs and filters
+    are mutually exclusive, a dry-run preview is the default, and the 500-run cap protects
+    against runaway deletions. Emits ``ctx.info`` notifications when FastMCP injects a
+    Context (parity with cancel_runs/replay_runs).
+    """
+    _require_writable()
+    has_filter = any(
+        v is not None
+        for v in (
+            workflow_id,
+            parent_workflow_run_id,
+            parent_step_run_id,
+            statuses,
+            additional_metadata,
+        )
+    )
+    if scheduled_ids and has_filter:
+        raise ValueError(
+            "Provide either scheduled_ids or filter parameters "
+            "(workflow_id/parent_workflow_run_id/parent_step_run_id/statuses/additional_metadata), not both."
+        )
+    if not scheduled_ids and not has_filter:
+        raise ValueError(
+            "Provide scheduled_ids, or at least one filter parameter "
+            "(workflow_id/parent_workflow_run_id/parent_step_run_id/statuses/additional_metadata)."
+        )
+
+    h = get_hatchet()
+    status_enums = _parse_enum_list(
+        statuses, ScheduledRunStatus, field="scheduled status"
+    )
+
+    if scheduled_ids:
+        target_ids = list(scheduled_ids)
+        if len(target_ids) > _SCHEDULED_BULK_LIMIT:
+            raise ValueError(
+                f"{len(target_ids)} scheduled runs exceed the {_SCHEDULED_BULK_LIMIT}-run "
+                f"bulk cap. Pass fewer scheduled_ids and retry."
+            )
+        if dry_run:
+            if ctx is not None:
+                await ctx.info(
+                    f"Dry-run preview: {len(target_ids)} scheduled run(s) would be deleted"
+                )
+            return {
+                "action": "delete_scheduled",
+                "dry_run": True,
+                "executed": False,
+                "matched_count": len(target_ids),
+                "scheduled_ids": target_ids,
+                "note": (
+                    "Dry run — no scheduled runs were deleted. "
+                    "Re-call with dry_run=false to delete these scheduled runs."
+                ),
+            }
+        if ctx is not None:
+            await ctx.info(
+                f"Submitting bulk delete for {len(target_ids)} scheduled run(s)"
+            )
+        result = await h.scheduled.aio_bulk_delete(scheduled_ids=target_ids)
+        return _dump(result)
+
+    if dry_run:
+        if ctx is not None:
+            await ctx.info(
+                "Dry-run preview: filter mode does not pre-resolve IDs (server-side)"
+            )
+        return {
+            "action": "delete_scheduled",
+            "dry_run": True,
+            "executed": False,
+            "matched_count": None,
+            "scheduled_ids": None,
+            "note": (
+                "Dry run — no scheduled runs were deleted. Filter mode does not pre-resolve "
+                "matching IDs (the SDK does so server-side). Re-call with dry_run=false to "
+                "delete; the bulk cap is enforced on the server."
+            ),
+        }
+    if ctx is not None:
+        await ctx.info("Submitting bulk delete by filter")
+    result = await h.scheduled.aio_bulk_delete(
+        scheduled_ids=None,
+        workflow_id=workflow_id,
+        parent_workflow_run_id=parent_workflow_run_id,
+        parent_step_run_id=parent_step_run_id,
+        statuses=status_enums,
+        additional_metadata=additional_metadata,
+    )
+    return _dump(result)
+
+
 READ_TOOLS: list[tuple[Callable[..., Any], str, str]] = [
     (
         list_crons,
@@ -277,6 +426,11 @@ READ_TOOLS: list[tuple[Callable[..., Any], str, str]] = [
         "filters, optional ordering (triggerAt/createdAt ASC/DESC), and pagination. "
         "Status values are ScheduledRunStatus: PENDING, RUNNING, SUCCEEDED, FAILED, "
         "CANCELLED, QUEUED, SCHEDULED.",
+    ),
+    (
+        get_scheduled,
+        "get_scheduled",
+        "Get a single scheduled (one-off, future-dated) workflow run by its ID.",
     ),
 ]
 
@@ -309,6 +463,14 @@ MUTATING_TOOLS: list[tuple[Callable[..., Any], str, str, ToolAnnotations]] = [
         reschedule,
         "reschedule",
         "Change the trigger time of an existing scheduled workflow run.",
+        _destructive(idempotent=True),
+    ),
+    (
+        bulk_delete_scheduled,
+        "bulk_delete_scheduled",
+        "Bulk-delete scheduled (one-off, future-dated) runs by explicit IDs or by filter. "
+        "Defaults to a dry-run preview (with explicit IDs); set dry_run=false to delete. "
+        "Refuses to act on more than 500 explicit IDs; filter mode delegates the cap to the server.",
         _destructive(idempotent=True),
     ),
 ]
