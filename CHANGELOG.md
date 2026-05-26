@@ -7,10 +7,54 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-## [0.3.0] - 2026-05-22
+## [0.3.0] - 2026-05-26
+
+### Added
+
+- **New domain `tools/webhooks.py`** — V1 inbound-webhook read surface: **`list_webhooks`**
+  (filter by name/source), **`get_webhook`** (by name). Read-only on purpose — create/update
+  /delete carry credential material (`BasicAuth` / `APIKeyAuth` / `HMACAuth`) kept out of MCP.
+- **New domain `tools/meta.py`** — server-side aggregation over existing reads:
+  **`top_failing_workflows`** (rank workflows by FAILED count in a window),
+  **`list_stuck_runs`** (RUNNING runs older than a minute threshold), **`describe_run_failure`**
+  (one-call diagnostic that runs `get_run` → logs/events/timings in parallel via
+  `asyncio.gather` and assembles a single structured payload).
+- **New SDK-gap read tools** in existing domains: **`get_workflow_version`**,
+  **`get_workflow_metrics`**, **`get_task_stats`**, **`get_scheduled`** (closes the
+  `get_cron` asymmetry), **`list_dag_tasks`**.
+- **New SDK-gap mutating tools**: **`cancel_run`** / **`replay_run`** (single-ID, no
+  dry-run/cap dance — for many IDs use the bulk variants), **`replay_events`** (500-event
+  cap), **`bulk_delete_scheduled`** (dry-run default, mutex IDs/filter, 500-cap on
+  explicit IDs).
+- **`HatchetAPIError`** typed exception — `RuntimeError` subclass with `status: int | None`
+  and `kind: Literal["validation_error" | "unauthorized" | "not_found" | "conflict" |
+  "rate_limited" | "server_error" | "unknown"]`. Message prefix `"Hatchet API error"` is
+  preserved so existing `pytest.raises(RuntimeError, match=...)` callers still match
+  (`src/hatchet_mcp/_shared.py`).
+- **MCP read-tool annotations** — every read tool now advertises
+  `ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True,
+  openWorldHint=True)` so clients (Cursor, Claude Code in trusted-server mode) can skip
+  per-call approval prompts for reads. Every registered tool (read + mutating) also carries
+  the MCP 2025-06-18 `title` field, derived from the snake_case name
+  (`src/hatchet_mcp/server.py`, `src/hatchet_mcp/_shared.py`).
+- **`tool.ok` / `tool.error` stderr records** now include the MCP JSON-RPC `request_id`
+  (present, may be `null` outside a request scope); `tool.error` also carries `error_status`
+  (int) and `error_kind` (str) from `HatchetAPIError`. Concurrent stdio tool calls become
+  attributable in stderr (`src/hatchet_mcp/_shared.py`, `src/hatchet_mcp/_logging.py`).
+- **Progress notifications** on bulk ops — `cancel_runs` / `replay_runs` /
+  `bulk_delete_scheduled` accept an injected `ctx: Context | None`, emitting `ctx.info` and
+  `ctx.report_progress` at resolve / submit / done milestones; existing callers (no `ctx`)
+  see no behavior change (`src/hatchet_mcp/tools/runs.py`,
+  `src/hatchet_mcp/tools/schedules.py`).
 
 ### Changed (breaking)
 
+- **`get_run_status`** return-key flips from `{"workflow_run_id": "..."}` to
+  `{"workflowRunId": "..."}`, restoring [CLAUDE.md](CLAUDE.md) invariant 4 ("tool output uses
+  the Hatchet REST shape — camelCase via `by_alias=True`"). The resource at
+  `hatchet://runs/{workflow_run_id}/status` follows by pass-through. Path-parameter names
+  are unchanged. Callers parsing the response key by name must switch to `workflowRunId`
+  (`src/hatchet_mcp/tools/runs.py`).
 - **`list_runs`** now defaults to a 9-field projection (`minimal_output=True`):
   `taskExternalId`, `workflowRunExternalId`, `status`, `workflowName`, `startedAt`,
   `finishedAt`, `errorMessage`, `parentTaskExternalId`, `numSpawnedChildren` —
@@ -23,17 +67,45 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `minimal_output=False` for the full record, or use `get_event` for one event's full
   payload. Same convention as `list_runs` (`src/hatchet_mcp/tools/events.py`).
 
-Callers that depended on the full row from either tool must now opt in by passing
-`minimal_output=False`. The 500 KB size guard still wraps the minimal-projection
-path so a runaway response cannot bypass it.
+Callers that depended on the full row from `list_runs` / `list_events`, or on the
+snake_case `get_run_status` key, must update.
 
 ### Changed
 
+- **HTTP connection reuse** — `_rest_call` now invokes a process-wide cached `ApiClient`
+  (`client.get_api_client()`, guarded by `threading.Lock` for the double-checked init under
+  `asyncio.to_thread` workers) instead of constructing a fresh `ApiClient` → `RESTClientObject`
+  → `urllib3.PoolManager` on every call. Keep-alive now amortizes TCP+TLS across the 11
+  REST-direct sites (events, observability, tasks, runs filter-resolve, etc.). The SDK's own
+  `aio_*` feature-client methods retain the per-call construction pattern upstream
+  (`src/hatchet_mcp/client.py`, `src/hatchet_mcp/_shared.py`).
+- **`describe_run_failure`** runs its three independent sub-reads (logs / events / timings)
+  via `asyncio.gather(return_exceptions=True)`. The timings branch is best-effort — an
+  `ApiException` / `HatchetAPIError` / `asyncio.TimeoutError` demotes it to `timings=null`
+  while logs + events still succeed (`src/hatchet_mcp/tools/meta.py`).
 - **`get_run_timings`** description now explicitly calls out that it is the cheapest way
   to expand a parent run's child task tree in a single call (use `depth=1` for direct
   children) — closes a discovery gap that previously forced callers to page through
   `list_runs` to find children of a known parent
   (`src/hatchet_mcp/tools/observability.py`).
+
+### Fixed
+
+- **MCP resources bypassed the reliability wrapper** (latent since v0.2.0). Resource handlers
+  in `resources.py` imported raw tool functions and awaited them directly, skipping the 30s
+  per-call deadline, retry on 5xx/429/transport, and `tool.ok` / `tool.error` log records — a
+  hung Hatchet response could hang the MCP session with no audit trail. Resources now go
+  through pre-wrapped handlers built once at module import time
+  (`src/hatchet_mcp/resources.py`).
+- **Concurrency race on `get_api_client()` init** closed via `threading.Lock` + double-check
+  (two `asyncio.to_thread` workers could otherwise both see `_api_client is None` and build
+  two `ApiClient` instances) (`src/hatchet_mcp/client.py`).
+
+### Docs
+
+- New spec **`v0.3.0/operational-toolkit-expansion`** and paired ADR — 7 decisions, AC-1
+  through AC-7 (`docs/roadmap/v0.3.0/`, `docs/design/v0.3.0/`).
+- `docs/roadmap/README.md` active-spec index updated with the v0.3.0 row.
 
 ## [0.2.1] - 2026-05-22
 
@@ -151,7 +223,9 @@ Initial release.
 - Environment-only configuration; fail-fast startup when `HATCHET_CLIENT_TOKEN` is missing.
 - PyPI publishing via GitHub Actions Trusted Publishing (OIDC).
 
-[Unreleased]: https://github.com/DanMeon/hatchet-mcp/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/DanMeon/hatchet-mcp/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/DanMeon/hatchet-mcp/compare/v0.2.1...v0.3.0
+[0.2.1]: https://github.com/DanMeon/hatchet-mcp/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/DanMeon/hatchet-mcp/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/DanMeon/hatchet-mcp/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/DanMeon/hatchet-mcp/releases/tag/v0.1.0

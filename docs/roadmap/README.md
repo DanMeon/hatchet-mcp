@@ -17,6 +17,7 @@ Each row is one spec + its paired design research (if any). Status follows [CONV
 | Version | Status | Roadmap spec | Design research (ADR) |
 |---|---|---|---|
 | v0.2.0 (reliability) | Frozen | [v0.2.0/reliability.md](v0.2.0/reliability.md) | [design/v0.2.0/reliability-research.md](../design/v0.2.0/reliability-research.md) |
+| v0.3.0 (operational-toolkit-expansion) | Draft | [v0.3.0/operational-toolkit-expansion.md](v0.3.0/operational-toolkit-expansion.md) | [design/v0.3.0/operational-toolkit-expansion-research.md](../design/v0.3.0/operational-toolkit-expansion-research.md) |
 
 ## Unstarted work
 
